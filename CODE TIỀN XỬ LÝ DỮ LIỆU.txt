@@ -1,0 +1,54 @@
+CODE TIỀN XỬ LÝ DỮ LIỆU
+   CODE TEST CÁC ĐẶC TRƯNG RANDOM FOREST. 
+
+                                │
+                                ▼
+          [Hỏi người dùng: Nhập đường dẫn Thư mục (Folder)]
+                                │
+                                ▼
+                {Kiểm tra dữ liệu người dùng nhập}
+                 /                              \
+          (Bỏ trống)                      (Có đường dẫn)
+               /                                  \
+              ▼                                    ▼
+[Tạo Dữ liệu giả lập (Simulation)]      [Dùng 'glob' quét toàn bộ file 
+  - Sinh sóng U_sim bằng np.sin           đuôi .csv trong thư mục đó]
+  - Sinh sóng I_sim, chèn nhiễu                    │
+  - Tạo cột Event NORMAL -> JAM                    ▼
+               │                          {Kiểm tra danh sách file}
+               │                          /                       \
+               │                (Không có file nào)        (Tìm thấy các file)
+               │                       /                            \
+               │                      ▼                              ▼
+               │               [In lỗi & Dừng]         [BẮT ĐẦU VÒNG LẶP FOR]
+               │                                      (Lặp qua từng file CSV)
+               │                                                     │
+               │                                                     ▼
+               │                                         [Đọc file: pd.read_csv()]
+               │                                                     │
+               │                                                     ▼
+               └──────────────────► + ◄────────────────
+                                    │
+                                    ▼
+               [DỮ LIỆU GỐC TỪ CSV]
+                     (Uwave, Iwave, EVENT)
+                               │
+                               ▼
+    =========================================================
+    PHASE 1: ĐỒNG BỘ PHA VÀ CHUẨN HÓA (extract_cycles_and_interpolate)
+    =========================================================
+                               │
+         [Quét điểm cắt 0 (Zero-crossing) trên Uwave]
+          (Tìm thời điểm sóng U đi từ âm sang dương)
+                               │
+                               ▼
+        [Cắt Uwave, Iwave và EVENT thành từng chu kỳ rời]
+                               │
+                               ▼
+    [Nội suy tuyến tính (Interpolation) ép về đúng 50 điểm/chu kỳ để đồng bộ pha]
+                               │
+                               ▼
+                 (Tạo ra mảng: cycles_u, cycles_i)
+                              
+   
+
