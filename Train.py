@@ -18,13 +18,13 @@ from sklearn.metrics import classification_report, confusion_matrix
 # =========================================================
 # 0. HÀM VẼ ĐỒ THỊ 1D
 # =========================================================
-def plot_raw_1d_signals(df_sliced, state_col, col_u, col_i):
+def plot_raw_1d_signals(df_sliced, state_col, u_col, i_col):
     plt.figure(figsize=(15, 5))
-    u_norm = df_sliced[col_u] / (df_sliced[col_u].abs().max() + 1e-9)
-    i_norm = df_sliced[col_i] / (df_sliced[col_i].abs().max() + 1e-9)
+    u_norm = df_sliced[u_col] / (df_sliced[u_col].abs().max() + 1e-9)
+    i_norm = df_sliced[i_col] / (df_sliced[i_col].abs().max() + 1e-9)
 
-    plt.plot(u_norm, label='Uwave (Normalized)', alpha=0.7, color='blue')
-    plt.plot(i_norm, label='Iwave (Normalized)', alpha=0.7, color='orange')
+    plt.plot(u_norm, label=f'{u_col} (Normalized)', alpha=0.7, color='blue')
+    plt.plot(i_norm, label=f'{i_col} (Normalized)', alpha=0.7, color='orange')
 
     jam_indices = df_sliced.index[df_sliced[state_col] == 'JAM'].tolist()
     if jam_indices:
@@ -40,40 +40,50 @@ def plot_raw_1d_signals(df_sliced, state_col, col_u, col_i):
     plt.show()
 
 # =========================================================
-# 1. HÀM TIỀN XỬ LÝ (ĐÃ SỬA: LẤY TOÀN BỘ FILE)
+# 1. HÀM TIỀN XỬ LÝ (ĐÃ SỬA: NHẬN NHIỀU CỘT ĐẶC TRƯNG)
 # =========================================================
 def process_data_to_hybrid_inputs(df, num_points=50, grid_size=64, window_size=5):
     state_col = 'Event' if 'Event' in df.columns else 'EVENT'
-    col_u = 'Uwave' if 'Uwave' in df.columns else 'Voltage[V]'
-    col_i = 'Iwave' if 'Iwave' in df.columns else 'Current[A]'
+    
+    # --- ĐÃ SỬA: Khai báo danh sách các cột sẽ đưa vào huấn luyện ---
+    expected_features = ['Voltage[V]', 'Current[A]', 'Power[W]', 'Energy[u]', 'Phase[rad]', 'Iwave', 'Uwave']
+    # Chỉ lấy những cột thực sự tồn tại trong file CSV
+    feature_cols = [col for col in expected_features if col in df.columns]
+    
+    # Dùng Uwave và Iwave để vẽ 2D (nếu không có thì lấy 2 cột đầu tiên)
+    u_col_2d = 'Uwave' if 'Uwave' in feature_cols else feature_cols[0]
+    i_col_2d = 'Iwave' if 'Iwave' in feature_cols else feature_cols[1]
+    
+    u_idx_2d = feature_cols.index(u_col_2d)
+    i_idx_2d = feature_cols.index(i_col_2d)
 
-    # Không cắt nhỏ nữa, tạo bản sao của toàn bộ dataframe
     df_sliced = df.copy().reset_index(drop=True)
     events = df_sliced[state_col].values
 
-    # Tìm TẤT CẢ các điểm bắt đầu xảy ra JAM (chuyển từ NORMAL sang JAM)
     jam_starts = np.where((events[:-1] != 'JAM') & (events[1:] == 'JAM'))[0] + 1
-    # Nếu file bắt đầu vào đã là JAM luôn
     if len(jam_starts) == 0 and 'JAM' in events:
         jam_starts = [np.where(events == 'JAM')[0][0]]
 
-    # Áp dụng vùng đệm UNKNOWN cho 1000 điểm trước mỗi lần kẹt
     for start_jam in jam_starts:
         start_unknown = max(0, start_jam - 1000)
         events[start_unknown:start_jam] = 'UNKNOWN'
     
     df_sliced[state_col] = events
 
-    # Chỉ vẽ đồ thị cho file đầu tiên để kiểm tra
     if 'first_plot_done' not in globals():
-        plot_raw_1d_signals(df_sliced, state_col, col_u, col_i)
+        plot_raw_1d_signals(df_sliced, state_col, u_col_2d, i_col_2d)
         global first_plot_done
         first_plot_done = True
 
-    u_norm = df_sliced[col_u].values / (df_sliced[col_u].abs().max() + 1e-9)
-    i_norm = df_sliced[col_i].values / (df_sliced[col_i].abs().max() + 1e-9)
+    # Chuẩn hóa TOÀN BỘ các cột đặc trưng
+    norm_data = {}
+    for col in feature_cols:
+        norm_data[col] = df_sliced[col].values / (df_sliced[col].abs().max() + 1e-9)
     
-    zero_crossings = np.where((u_norm[:-1] < 0) & (u_norm[1:] >= 0))[0]
+    # Lấy tín hiệu Uwave để tìm điểm cắt ngang 0 (zero-crossings)
+    u_ref = norm_data[u_col_2d]
+    zero_crossings = np.where((u_ref[:-1] < 0) & (u_ref[1:] >= 0))[0]
+    
     cycles_1d = []
     cycles_labels = []
 
@@ -83,10 +93,15 @@ def process_data_to_hybrid_inputs(df, num_points=50, grid_size=64, window_size=5
 
         old_idx = np.linspace(0, 1, end - start)
         new_idx = np.linspace(0, 1, num_points)
-        interp_u = np.interp(new_idx, old_idx, u_norm[start:end])
-        interp_i = np.interp(new_idx, old_idx, i_norm[start:end])
+        
+        # Nội suy cho tất cả các cột
+        interp_features = []
+        for col in feature_cols:
+            interp_feat = np.interp(new_idx, old_idx, norm_data[col][start:end])
+            interp_features.append(interp_feat)
 
-        cycles_1d.append(np.column_stack((interp_u, interp_i)))
+        # Gộp tất cả thành 1 ma trận: (num_points, số_lượng_cột)
+        cycles_1d.append(np.column_stack(interp_features))
 
         cycle_events = events[start:end]
         majority_event = max(set(cycle_events), key=list(cycle_events).count)
@@ -107,11 +122,12 @@ def process_data_to_hybrid_inputs(df, num_points=50, grid_size=64, window_size=5
         if str(majority_label).upper() == 'UNKNOWN':
             continue
 
-        window_1d = np.vstack(chunk_1d)
+        window_1d = np.vstack(chunk_1d) # Shape: (window_size * num_points, số_lượng_cột)
         X_1d_list.append(window_1d)
 
-        u_window = window_1d[:, 0]
-        i_window = window_1d[:, 1]
+        # Chỉ trích xuất 2 cột U và I để vẽ biểu đồ nhiệt 2D
+        u_window = window_1d[:, u_idx_2d]
+        i_window = window_1d[:, i_idx_2d]
         heatmap, _, _ = np.histogram2d(u_window, i_window, bins=(bins, bins))
         window_2d = np.where(heatmap > 0, 1.0, 0.0)[..., np.newaxis]
         X_2d_list.append(window_2d)
@@ -121,9 +137,10 @@ def process_data_to_hybrid_inputs(df, num_points=50, grid_size=64, window_size=5
     return X_1d_list, X_2d_list, y_list
 
 # =========================================================
-# 2. XÂY DỰNG MÔ HÌNH HYBRID (GIỮ NGUYÊN KIẾN TRÚC)
+# 2. XÂY DỰNG MÔ HÌNH HYBRID 
 # =========================================================
-def build_hybrid_cnn(input_shape_1d=(250, 2), input_shape_2d=(64, 64, 1)):
+# --- ĐÃ SỬA: Biến num_features thành tham số động ---
+def build_hybrid_cnn(input_shape_1d, input_shape_2d=(64, 64, 1)):
     input_1d = Input(shape=input_shape_1d, name="1D_Time_Series")
     x1 = Conv1D(filters=32, kernel_size=5, activation='relu')(input_1d)
     x1 = MaxPooling1D(pool_size=2)(x1)
@@ -217,7 +234,6 @@ def display_gradcam_overlay(X1_test, X2_test, y_test, model):
 # 4. HÀM CHÍNH VÀ CÁC HÀM PHỤ TRỢ 
 # =========================================================
 def load_files_to_dataset(file_list, window_size):
-    """Hàm phụ: Đọc danh sách file và tạo Dataset"""
     X1, X2, y = [], [], []
     for idx, file_path in enumerate(file_list, 1):
         print(f"   + Xử lý file [{idx}/{len(file_list)}]: {os.path.basename(file_path)}")
@@ -233,7 +249,7 @@ def load_files_to_dataset(file_list, window_size):
     return np.array(X1), np.array(X2), np.array(y)
 
 def main():
-    print("=== HUẤN LUYỆN HYBRID CNN (1D + 2D) - DÙNG TOÀN BỘ FILE EXCEL ===")
+    print("=== HUẤN LUYỆN HYBRID CNN (1D + 2D) - NHIỀU ĐẶC TRƯNG ===")
     folder_path = input("Nhập đường dẫn Folder chứa file CSV (Bỏ trống để dùng giả lập): ")
     window_size = 5
 
@@ -248,7 +264,19 @@ def main():
                              3.6 * np.sin(t + np.pi/6) + np.random.normal(0, 0.2, len(t)),
                              15.0 * np.sin(t + np.pi/4) + np.random.normal(0, 1.0, len(t)) + 2.0)
                 event = ['NORMAL' if time < 500 * np.pi else 'JAM' for time in t]
-                df_sim = pd.DataFrame({'Uwave': u, 'Iwave': i, 'Event': event})
+                
+                # --- ĐÃ SỬA: Tạo file giả lập chứa đầy đủ các cột ---
+                df_sim = pd.DataFrame({
+                    'Voltage[V]': u,
+                    'Current[A]': i,
+                    'Power[W]': u * i,
+                    'Energy[u]': np.cumsum(np.abs(u * i)) / 1000,
+                    'Phase[rad]': np.mod(t, 2*np.pi),
+                    'Uwave': u,
+                    'Iwave': i,
+                    'Event': event
+                })
+                
                 x1, x2, y = process_data_to_hybrid_inputs(df_sim, window_size=window_size)
                 x1_list.extend(x1); x2_list.extend(x2); y_list.extend(y)
             return np.array(x1_list), np.array(x2_list), np.array(y_list)
@@ -264,12 +292,9 @@ def main():
             
         print(f"\n-> Đã tìm thấy tổng cộng {len(csv_files)} files. Sẽ lấy 100% dữ liệu có trong file.")
         
-        # --- ĐÃ SỬA TẠI ĐÂY ---
-        # Đổi test_size = 0.30 (70% Train, 30% Test)
         if len(csv_files) > 1:
             train_files, test_files = train_test_split(csv_files, test_size=0.30, random_state=42)
         else:
-            # Nếu bạn chỉ nhét duy nhất 1 file dài vào thư mục, đành phải lấy nó cho cả Train và Test để code chạy qua được
             train_files = test_files = csv_files
             print("\nCẢNH BÁO: Chỉ có 1 file trong thư mục. Đang ép dùng chung cho cả Train và Test.")
 
@@ -291,7 +316,11 @@ def main():
 
     # --- HUẤN LUYỆN MÔ HÌNH ---
     print(f"\n-> Khởi tạo mô hình Hybrid CNN...")
-    model = build_hybrid_cnn(input_shape_1d=(window_size * 50, 2), input_shape_2d=(64, 64, 1))
+    # Lấy tự động số lượng cột (num_features) từ shape của X1_train
+    num_features = X1_train.shape[2]
+    print(f"   * Phát hiện {num_features} cột đặc trưng trong tập dữ liệu 1D.")
+    
+    model = build_hybrid_cnn(input_shape_1d=(window_size * 50, num_features), input_shape_2d=(64, 64, 1))
 
     early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
 
