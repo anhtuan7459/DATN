@@ -20,6 +20,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 def plot_raw_1d_signals(df_sliced, state_col, u_col, i_col):
     plt.figure(figsize=(15, 5))
     
+    # Chỉ vẽ trực quan nên có thể chuẩn hóa nhanh
     u_norm = df_sliced[u_col] / (df_sliced[u_col].abs().max() + 1e-9)
     i_norm = df_sliced[i_col] / (df_sliced[i_col].abs().max() + 1e-9)
 
@@ -42,8 +43,7 @@ def plot_raw_1d_signals(df_sliced, state_col, u_col, i_col):
 # =========================================================
 # 1. HÀM TIỀN XỬ LÝ (CHỈ XUẤT ẢNH 2D TỪ I-V)
 # =========================================================
-# ---> ĐÃ SỬA: Mặc định num_points = 100 để nét vẽ liền mạch hơn
-def process_data_to_2d_inputs(df, num_points=100, grid_size=64, window_size=5):
+def process_data_to_2d_inputs(df, num_points=50, grid_size=64, window_size=5):
     state_col = 'Event' if 'Event' in df.columns else 'EVENT'
     u_col_2d = 'Uwave' if 'Uwave' in df.columns else 'Voltage[V]'
     i_col_2d = 'Iwave' if 'Iwave' in df.columns else 'Current[A]'
@@ -66,10 +66,11 @@ def process_data_to_2d_inputs(df, num_points=100, grid_size=64, window_size=5):
         global first_plot_done
         first_plot_done = True
 
-    # Giữ nguyên giá trị thô để xử lý
+    # KHÔNG chuẩn hóa toàn file nữa, lấy giá trị thô để tính toán
     u_raw = df_sliced[u_col_2d].values
     i_raw = df_sliced[i_col_2d].values
     
+    # Tìm điểm cắt 0 trên tín hiệu U
     zero_crossings = np.where((u_raw[:-1] < 0) & (u_raw[1:] >= 0))[0]
     
     cycles_raw = []
@@ -80,8 +81,7 @@ def process_data_to_2d_inputs(df, num_points=100, grid_size=64, window_size=5):
         if end - start < 10: continue
 
         old_idx = np.linspace(0, 1, end - start)
-        # Nội suy lên 100 điểm
-        new_idx = np.linspace(0, 1, num_points) 
+        new_idx = np.linspace(0, 1, num_points)
         
         interp_u = np.interp(new_idx, old_idx, u_raw[start:end])
         interp_i = np.interp(new_idx, old_idx, i_raw[start:end])
@@ -107,20 +107,23 @@ def process_data_to_2d_inputs(df, num_points=100, grid_size=64, window_size=5):
         if str(majority_label).upper() == 'UNKNOWN':
             continue
 
-        # Lấy trung bình theo pha để khử nhiễu
-        chunk_array = np.stack(chunk_raw, axis=0) # Shape: (window_size, 100, 2)
-        mean_cycle = np.mean(chunk_array, axis=0) # Shape: (100, 2)
+        # --- CẢI TIẾN: Lấy trung bình theo pha thay vì vstack ---
+        chunk_array = np.stack(chunk_raw, axis=0) # Shape: (window_size, num_points, 2)
+        mean_cycle = np.mean(chunk_array, axis=0) # Shape: (num_points, 2)
 
         u_window = mean_cycle[:, 0]
         i_window = mean_cycle[:, 1]
 
-        # Chuẩn hóa CỤC BỘ theo từng window
+        # --- CẢI TIẾN: Chuẩn hóa theo từng window ---
         u_norm = u_window / (np.max(np.abs(u_window)) + 1e-9)
         i_norm = i_window / (np.max(np.abs(i_window)) + 1e-9)
 
+        # Tính biểu đồ nhiệt
         heatmap, _, _ = np.histogram2d(u_norm, i_norm, bins=(bins, bins))
+        
+        # Cường độ sáng của điểm ảnh cũng được chuẩn hóa cục bộ
         window_2d = heatmap / (heatmap.max() + 1e-9) 
-        window_2d = window_2d[..., np.newaxis] 
+        window_2d = window_2d[..., np.newaxis] # Expand dims cho Keras (64, 64, 1)
         
         X_2d_list.append(window_2d)
         y_list.append(1 if str(majority_label).upper() == 'JAM' else 0)
@@ -216,14 +219,13 @@ def display_gradcam_overlay(X_test, y_test, model):
 # =========================================================
 # 4. HÀM CHÍNH VÀ CÁC HÀM PHỤ TRỢ 
 # =========================================================
-# ---> ĐÃ SỬA: Chuyền num_points=100 vào hàm
-def load_files_to_dataset(file_list, window_size, num_points=100):
+def load_files_to_dataset(file_list, window_size):
     X_2d, y = [], []
     for idx, file_path in enumerate(file_list, 1):
         print(f"   + Xử lý file [{idx}/{len(file_list)}]: {os.path.basename(file_path)}")
         try:
             df = pd.read_csv(file_path)
-            x2_chunk, y_chunk = process_data_to_2d_inputs(df, num_points=num_points, window_size=window_size)
+            x2_chunk, y_chunk = process_data_to_2d_inputs(df, window_size=window_size)
             X_2d.extend(x2_chunk)
             y.extend(y_chunk)
             print(f"     -> Trích xuất được {len(y_chunk)} mẫu ảnh 2D.")
@@ -232,11 +234,10 @@ def load_files_to_dataset(file_list, window_size, num_points=100):
     return np.array(X_2d), np.array(y)
 
 def main():
-    print("=== HUẤN LUYỆN CNN 2D (QUỸ ĐẠO I-V, 100 ĐIỂM NỘI SUY) ===")
+    print("=== HUẤN LUYỆN CNN 2D (QUỸ ĐẠO I-V) ===")
     
     train_folder_path = input("Nhập đường dẫn Folder chứa file TRAIN (Bỏ trống để dùng giả lập): ")
     window_size = 5
-    num_points = 100 # Cấu hình số điểm tại đây
 
     if train_folder_path.strip() == "":
         print("\n-> Đang tạo dữ liệu giả lập...")
@@ -252,41 +253,54 @@ def main():
                 
                 df_sim = pd.DataFrame({'Uwave': u, 'Iwave': i, 'Event': event})
                 
-                x2, y = process_data_to_2d_inputs(df_sim, num_points=num_points, window_size=window_size)
+                x2, y = process_data_to_2d_inputs(df_sim, window_size=window_size)
                 x2_list.extend(x2); y_list.extend(y)
             return np.array(x2_list), np.array(y_list)
 
+        # CẬP NHẬT 1: Tạo thêm dữ liệu giả lập cho tập Validation
         X_train, y_train = gen_sim_data(3)
+        X_val, y_val = gen_sim_data(1) 
         X_test, y_test = gen_sim_data(1)
         
     else:
+        # CẬP NHẬT 2: Hỏi thêm đường dẫn tập Validation
+        val_folder_path = input("Nhập đường dẫn Folder chứa file VALIDATION (VAL): ")
         test_folder_path = input("Nhập đường dẫn Folder chứa file TEST: ")
         
         train_files = glob.glob(os.path.join(train_folder_path, '*.csv'))
+        val_files = glob.glob(os.path.join(val_folder_path, '*.csv'))
         test_files = glob.glob(os.path.join(test_folder_path, '*.csv'))
         
         if len(train_files) == 0:
             print(f"Không tìm thấy file CSV nào trong thư mục TRAIN: {train_folder_path}!")
             return
             
+        if len(val_files) == 0:
+            print(f"Không tìm thấy file CSV nào trong thư mục VALIDATION: {val_folder_path}!")
+            return
+            
         if len(test_files) == 0:
             print(f"Không tìm thấy file CSV nào trong thư mục TEST: {test_folder_path}!")
             return
             
-        print(f"\n-> Đã tìm thấy {len(train_files)} files TRAIN và {len(test_files)} files TEST.")
+        print(f"\n-> Đã tìm thấy {len(train_files)} files TRAIN, {len(val_files)} files VAL và {len(test_files)} files TEST.")
 
         print("\n=== ĐANG TẠO TẬP TRAIN ===")
-        X_train, y_train = load_files_to_dataset(train_files, window_size, num_points)
+        X_train, y_train = load_files_to_dataset(train_files, window_size)
+
+        print("\n=== ĐANG TẠO TẬP VALIDATION ===")
+        X_val, y_val = load_files_to_dataset(val_files, window_size)
 
         print("\n=== ĐANG TẠO TẬP TEST ===")
-        X_test, y_test = load_files_to_dataset(test_files, window_size, num_points)
+        X_test, y_test = load_files_to_dataset(test_files, window_size)
 
-    if len(y_train) == 0 or len(y_test) == 0:
-        print("\nDữ liệu Train hoặc Test bị rỗng. Vui lòng kiểm tra lại file CSV của bạn!")
+    if len(y_train) == 0 or len(y_val) == 0 or len(y_test) == 0:
+        print("\nDữ liệu Train, Val hoặc Test bị rỗng. Vui lòng kiểm tra lại file CSV của bạn!")
         return
 
-    print(f"\n-> TỔNG QUAN DỮ LIỆU SAU KHI GỘP TẤT CẢ:")
+    print(f"\n-> TỔNG QUAN DỮ LIỆU:")
     print(f"   + TRAIN: {len(y_train)} mẫu ảnh (NORMAL: {np.sum(y_train==0)}, JAM: {np.sum(y_train==1)})")
+    print(f"   + VAL:   {len(y_val)} mẫu ảnh (NORMAL: {np.sum(y_val==0)}, JAM: {np.sum(y_val==1)})")
     print(f"   + TEST:  {len(y_test)} mẫu ảnh (NORMAL: {np.sum(y_test==0)}, JAM: {np.sum(y_test==1)})")
 
     # --- HUẤN LUYỆN MÔ HÌNH ---
@@ -295,10 +309,11 @@ def main():
 
     early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
 
+    # CẬP NHẬT 3: Thay đổi validation_split thành validation_data
     history = model.fit(
         x=X_train,
         y=y_train,
-        validation_split=0.2, 
+        validation_data=(X_val, y_val), # Ép mô hình dùng thư mục Val bạn đã chọn
         epochs=30,
         batch_size=32,
         callbacks=[early_stop],
