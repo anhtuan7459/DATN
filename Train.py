@@ -43,23 +43,13 @@ def plot_raw_1d_signals(df_sliced, state_col, u_col, i_col):
 # =========================================================
 # 1. HÀM TIỀN XỬ LÝ (CHỈ XUẤT ẢNH 2D TỪ I-V)
 # =========================================================
-def process_data_to_2d_inputs(df, num_points=50, grid_size=64, window_size=5):
+def process_data_to_2d_inputs(df, num_points=50, grid_size=64, window_size=10):
     state_col = 'Event' if 'Event' in df.columns else 'EVENT'
     u_col_2d = 'Uwave' if 'Uwave' in df.columns else 'Voltage[V]'
     i_col_2d = 'Iwave' if 'Iwave' in df.columns else 'Current[A]'
 
     df_sliced = df.copy().reset_index(drop=True)
     events = df_sliced[state_col].values
-
-    jam_starts = np.where((events[:-1] != 'JAM') & (events[1:] == 'JAM'))[0] + 1
-    if len(jam_starts) == 0 and 'JAM' in events:
-        jam_starts = [np.where(events == 'JAM')[0][0]]
-
-    for start_jam in jam_starts:
-        start_unknown = max(0, start_jam - 1000)
-        events[start_unknown:start_jam] = 'UNKNOWN'
-    
-    df_sliced[state_col] = events
 
     if 'first_plot_done' not in globals():
         plot_raw_1d_signals(df_sliced, state_col, u_col_2d, i_col_2d)
@@ -104,9 +94,6 @@ def process_data_to_2d_inputs(df, num_points=50, grid_size=64, window_size=5):
 
         majority_label = max(set(chunk_labels), key=chunk_labels.count)
 
-        if str(majority_label).upper() == 'UNKNOWN':
-            continue
-
         # --- CẢI TIẾN: Lấy trung bình theo pha thay vì vstack ---
         chunk_array = np.stack(chunk_raw, axis=0) # Shape: (window_size, num_points, 2)
         mean_cycle = np.mean(chunk_array, axis=0) # Shape: (num_points, 2)
@@ -134,7 +121,7 @@ def process_data_to_2d_inputs(df, num_points=50, grid_size=64, window_size=5):
 # 2. XÂY DỰNG MÔ HÌNH CNN 2D THUẦN TÚY
 # =========================================================
 def build_2d_cnn(input_shape_2d=(64, 64, 1)):
-    input_2d = Input(shape=input_shape_2d, name="2D_Trajectory_Image")
+    input_2d = Input(shape=input_shape_2d) 
     
     x = Conv2D(filters=16, kernel_size=(3, 3), activation='relu')(input_2d)
     x = MaxPooling2D(pool_size=(2, 2))(x)
@@ -178,40 +165,77 @@ def make_gradcam_heatmap(input_2d_array, model, last_conv_layer_name="last_conv2
     heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
     return heatmap.numpy()
 
-def display_gradcam_overlay(X_test, y_test, model):
-    print("\n-> Đang tạo Bản đồ nhiệt Grad-CAM để giải thích mô hình...")
+def display_gradcam_overlay(X_test, y_test, model, num_samples=3):
+    """
+    Hiển thị dạng lưới:
+    - Hàng 1: Các mẫu NORMAL
+    - Hàng 2: Các mẫu JAM
+    num_samples: Số lượng mẫu mỗi loại muốn hiển thị.
+    """
+    print(f"\n-> Đang tạo Bản đồ nhiệt Grad-CAM ({num_samples} ảnh mỗi nhãn)...")
 
     normal_indices = np.where(y_test == 0)[0]
     jam_indices = np.where(y_test == 1)[0]
     
-    if len(normal_indices) == 0 or len(jam_indices) == 0:
-        print("Không đủ cả nhãn NORMAL và JAM trong tập Test để vẽ Grad-CAM!")
+    # Đảm bảo không yêu cầu nhiều ảnh hơn số lượng đang có
+    n_normal = min(num_samples, len(normal_indices))
+    n_jam = min(num_samples, len(jam_indices))
+    n_cols = max(n_normal, n_jam)
+
+    if n_cols == 0:
+        print("Không đủ nhãn NORMAL hoặc JAM trong tập Test để vẽ Grad-CAM!")
         return
 
-    normal_idx = normal_indices[0]
-    jam_idx = jam_indices[0]
+    # Khởi tạo khung vẽ, 2 hàng, số cột bằng số mẫu
+    fig, axes = plt.subplots(2, n_cols, figsize=(5 * n_cols, 8))
+    
+    # Nếu chỉ có 1 cột, matplotlib trả về mảng 1D, ta ép về 2D để code khỏi lỗi
+    if n_cols == 1:
+        axes = axes.reshape(2, 1)
 
-    samples = [normal_idx, jam_idx]
-    titles = ['NORMAL (Nhãn 0)', 'JAM (Nhãn 1)']
+    fig.suptitle('EXPLAINABLE AI: BẢN ĐỒ NHIỆT GRAD-CAM QUỸ ĐẠO I-V', fontsize=16, fontweight='bold', y=1.02)
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-    fig.suptitle('EXPLAINABLE AI: BẢN ĐỒ NHIỆT GRAD-CAM QUỸ ĐẠO I-V', fontsize=14, fontweight='bold')
+    # --- HÀNG 1: VẼ NORMAL ---
+    for i in range(n_cols):
+        ax = axes[0, i]
+        if i < n_normal:
+            idx = normal_indices[i]
+            x_sample = np.expand_dims(X_test[idx], axis=0)
+            heatmap = make_gradcam_heatmap(x_sample, model)
+            img_original = X_test[idx][:, :, 0]
 
-    for i, idx in enumerate(samples):
-        x_sample = np.expand_dims(X_test[idx], axis=0)
+            ax.imshow(img_original.T, cmap='gray_r', origin='lower', extent=[-1.1, 1.1, -1.1, 1.1])
+            ax.imshow(heatmap.T, cmap='jet', alpha=0.5, origin='lower', extent=[-1.1, 1.1, -1.1, 1.1], interpolation='bilinear')
 
-        heatmap = make_gradcam_heatmap(x_sample, model)
-        img_original = X_test[idx][:, :, 0]
+            pred_score = model.predict(x_sample, verbose=0)[0][0]
+            
+            ax.set_title(f"NORMAL (Mẫu {i+1})\nAI Dự đoán JAM: {pred_score*100:.1f}%", fontsize=11, color='green' if pred_score < 0.5 else 'red')
+            ax.set_xlabel('U (chuẩn hóa)')
+            ax.set_ylabel('I (chuẩn hóa)')
+            ax.grid(True, color='black', linestyle=':', alpha=0.2)
+        else:
+            ax.axis('off') # Ẩn ô trống nếu thiếu dữ liệu
 
-        axes[i].imshow(img_original.T, cmap='gray_r', origin='lower', extent=[-1.1, 1.1, -1.1, 1.1])
-        axes[i].imshow(heatmap.T, cmap='jet', alpha=0.5, origin='lower', extent=[-1.1, 1.1, -1.1, 1.1], interpolation='bilinear')
+    # --- HÀNG 2: VẼ JAM ---
+    for i in range(n_cols):
+        ax = axes[1, i]
+        if i < n_jam:
+            idx = jam_indices[i]
+            x_sample = np.expand_dims(X_test[idx], axis=0)
+            heatmap = make_gradcam_heatmap(x_sample, model)
+            img_original = X_test[idx][:, :, 0]
 
-        pred_score = model.predict(x_sample, verbose=0)[0][0]
+            ax.imshow(img_original.T, cmap='gray_r', origin='lower', extent=[-1.1, 1.1, -1.1, 1.1])
+            ax.imshow(heatmap.T, cmap='jet', alpha=0.5, origin='lower', extent=[-1.1, 1.1, -1.1, 1.1], interpolation='bilinear')
 
-        axes[i].set_title(f"{titles[i]} | AI Dự đoán JAM: {pred_score*100:.1f}%")
-        axes[i].set_xlabel('U (chuẩn hóa)')
-        axes[i].set_ylabel('I (chuẩn hóa)')
-        axes[i].grid(True, color='black', linestyle=':', alpha=0.2)
+            pred_score = model.predict(x_sample, verbose=0)[0][0]
+            
+            ax.set_title(f"JAM (Mẫu {i+1})\nAI Dự đoán JAM: {pred_score*100:.1f}%", fontsize=11, color='red' if pred_score >= 0.5 else 'green')
+            ax.set_xlabel('U (chuẩn hóa)')
+            ax.set_ylabel('I (chuẩn hóa)')
+            ax.grid(True, color='black', linestyle=':', alpha=0.2)
+        else:
+            ax.axis('off')
 
     plt.tight_layout()
     plt.show()
@@ -257,13 +281,11 @@ def main():
                 x2_list.extend(x2); y_list.extend(y)
             return np.array(x2_list), np.array(y_list)
 
-        # CẬP NHẬT 1: Tạo thêm dữ liệu giả lập cho tập Validation
         X_train, y_train = gen_sim_data(3)
         X_val, y_val = gen_sim_data(1) 
         X_test, y_test = gen_sim_data(1)
         
     else:
-        # CẬP NHẬT 2: Hỏi thêm đường dẫn tập Validation
         val_folder_path = input("Nhập đường dẫn Folder chứa file VALIDATION (VAL): ")
         test_folder_path = input("Nhập đường dẫn Folder chứa file TEST: ")
         
@@ -309,11 +331,10 @@ def main():
 
     early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
 
-    # CẬP NHẬT 3: Thay đổi validation_split thành validation_data
     history = model.fit(
         x=X_train,
         y=y_train,
-        validation_data=(X_val, y_val), # Ép mô hình dùng thư mục Val bạn đã chọn
+        validation_data=(X_val, y_val),
         epochs=30,
         batch_size=32,
         callbacks=[early_stop],
@@ -347,8 +368,8 @@ def main():
     plt.tight_layout()
     plt.show()
 
-    # BẢN ĐỒ NHIỆT
-    display_gradcam_overlay(X_test, y_test, model)
+    # BẢN ĐỒ NHIỆT (HIỂN THỊ 3 ẢNH MỖI LOẠI)
+    display_gradcam_overlay(X_test, y_test, model, num_samples=3)
 
     print("\n-> Đang đóng gói và tải mô hình về máy...")
     model.save('cnn2d_jam.h5')
