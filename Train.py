@@ -30,10 +30,8 @@ def plot_raw_1d_signals(df_sliced, state_col, col_u, col_i):
     if jam_indices:
         start_jam = jam_indices[0]
         plt.axvline(x=start_jam, color='red', linestyle='--', linewidth=2, label='Start of JAM Event')
-        start_unknown = max(0, start_jam - 1000)
-        plt.axvspan(start_unknown, start_jam, color='yellow', alpha=0.3, label='UNKNOWN Buffer')
 
-    plt.title("Biểu đồ tín hiệu 1D (U & I) và ranh giới các trạng thái", fontsize=14, fontweight='bold')
+    plt.title("Biểu đồ tín hiệu 1D (Toàn bộ File)", fontsize=14, fontweight='bold')
     plt.xlabel("Index (Data Points)")
     plt.ylabel("Biên độ (Chuẩn hóa)")
     plt.legend()
@@ -42,27 +40,31 @@ def plot_raw_1d_signals(df_sliced, state_col, col_u, col_i):
     plt.show()
 
 # =========================================================
-# 1. HÀM TIỀN XỬ LÝ
+# 1. HÀM TIỀN XỬ LÝ (ĐÃ SỬA: LẤY TOÀN BỘ FILE)
 # =========================================================
 def process_data_to_hybrid_inputs(df, num_points=50, grid_size=64, window_size=5):
     state_col = 'Event' if 'Event' in df.columns else 'EVENT'
     col_u = 'Uwave' if 'Uwave' in df.columns else 'Voltage[V]'
     col_i = 'Iwave' if 'Iwave' in df.columns else 'Current[A]'
 
-    jam_indices = df.index[df[state_col] == 'JAM'].tolist()
-    if not jam_indices:
-        print(" -> File không có nhãn JAM, bỏ qua.")
-        return [], [], []
+    # Không cắt nhỏ nữa, tạo bản sao của toàn bộ dataframe
+    df_sliced = df.copy().reset_index(drop=True)
+    events = df_sliced[state_col].values
 
-    first_jam = jam_indices[0]
-    start_idx = max(0, first_jam - 6000)
-    end_idx = min(len(df), first_jam + 6000)
+    # Tìm TẤT CẢ các điểm bắt đầu xảy ra JAM (chuyển từ NORMAL sang JAM)
+    jam_starts = np.where((events[:-1] != 'JAM') & (events[1:] == 'JAM'))[0] + 1
+    # Nếu file bắt đầu vào đã là JAM luôn
+    if len(jam_starts) == 0 and 'JAM' in events:
+        jam_starts = [np.where(events == 'JAM')[0][0]]
 
-    df_sliced = df.iloc[start_idx:end_idx].copy().reset_index(drop=True)
-    new_first_jam = first_jam - start_idx
-    start_unknown = max(0, new_first_jam - 1000)
-    df_sliced.loc[start_unknown : new_first_jam - 1, state_col] = 'UNKNOWN'
+    # Áp dụng vùng đệm UNKNOWN cho 1000 điểm trước mỗi lần kẹt
+    for start_jam in jam_starts:
+        start_unknown = max(0, start_jam - 1000)
+        events[start_unknown:start_jam] = 'UNKNOWN'
+    
+    df_sliced[state_col] = events
 
+    # Chỉ vẽ đồ thị cho file đầu tiên để kiểm tra
     if 'first_plot_done' not in globals():
         plot_raw_1d_signals(df_sliced, state_col, col_u, col_i)
         global first_plot_done
@@ -70,8 +72,7 @@ def process_data_to_hybrid_inputs(df, num_points=50, grid_size=64, window_size=5
 
     u_norm = df_sliced[col_u].values / (df_sliced[col_u].abs().max() + 1e-9)
     i_norm = df_sliced[col_i].values / (df_sliced[col_i].abs().max() + 1e-9)
-    events = df_sliced[state_col].values
-
+    
     zero_crossings = np.where((u_norm[:-1] < 0) & (u_norm[1:] >= 0))[0]
     cycles_1d = []
     cycles_labels = []
@@ -120,7 +121,7 @@ def process_data_to_hybrid_inputs(df, num_points=50, grid_size=64, window_size=5
     return X_1d_list, X_2d_list, y_list
 
 # =========================================================
-# 2. XÂY DỰNG MÔ HÌNH HYBRID (1-D + 2-D CNN)
+# 2. XÂY DỰNG MÔ HÌNH HYBRID (GIỮ NGUYÊN KIẾN TRÚC)
 # =========================================================
 def build_hybrid_cnn(input_shape_1d=(250, 2), input_shape_2d=(64, 64, 1)):
     input_1d = Input(shape=input_shape_1d, name="1D_Time_Series")
@@ -133,7 +134,6 @@ def build_hybrid_cnn(input_shape_1d=(250, 2), input_shape_2d=(64, 64, 1)):
     input_2d = Input(shape=input_shape_2d, name="2D_Trajectory_Image")
     x2 = Conv2D(filters=16, kernel_size=(3, 3), activation='relu')(input_2d)
     x2 = MaxPooling2D(pool_size=(2, 2))(x2)
-    # QUAN TRỌNG: Đặt tên cho lớp Conv2D cuối cùng để trích xuất Grad-CAM
     x2 = Conv2D(filters=32, kernel_size=(3, 3), activation='relu', name="last_conv2d_layer")(x2)
     x2 = MaxPooling2D(pool_size=(2, 2))(x2)
     flat_2d = Flatten()(x2)
@@ -154,70 +154,57 @@ def build_hybrid_cnn(input_shape_1d=(250, 2), input_shape_2d=(64, 64, 1)):
 # 3. HÀM TÍNH TOÁN VÀ VẼ BẢN ĐỒ NHIỆT (GRAD-CAM)
 # =========================================================
 def make_gradcam_heatmap(input_1d_array, input_2d_array, model, last_conv_layer_name="last_conv2d_layer"):
-    """Tạo ma trận bản đồ nhiệt bằng kỹ thuật Grad-CAM"""
-    # Tạo một mô hình phụ lấy đầu ra là lớp Conv2D cuối cùng và kết quả dự đoán
     grad_model = tf.keras.models.Model(
-        [model.inputs[0], model.inputs[1]], 
+        [model.inputs[0], model.inputs[1]],
         [model.get_layer(last_conv_layer_name).output, model.output]
     )
 
-    # Tính toán Gradient (Đạo hàm)
     with tf.GradientTape() as tape:
         inputs = [input_1d_array, input_2d_array]
         last_conv_layer_output, preds = grad_model(inputs)
-        # Vì đây là bài toán phân loại nhị phân (Sigmoid), ta lấy luôn giá trị dự đoán
         class_channel = preds[:, 0]
 
-    # Tính gradient của điểm số dự đoán với lớp Feature Map cuối cùng
     grads = tape.gradient(class_channel, last_conv_layer_output)
-    
-    # Tính trung bình gradient (Trọng số quan trọng của từng bộ lọc)
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
 
-    # Nhân các Feature Map với trọng số quan trọng tương ứng
     last_conv_layer_output = last_conv_layer_output[0]
     heatmap = last_conv_layer_output @ pooled_grads[..., tf.newaxis]
     heatmap = tf.squeeze(heatmap)
 
-    # Lọc bỏ giá trị âm (Chỉ quan tâm tới các pixel đóng góp tích cực vào quyết định KẸT)
     heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
     return heatmap.numpy()
 
 def display_gradcam_overlay(X1_test, X2_test, y_test, model):
-    """Hiển thị ảnh quỹ đạo gốc và phủ bản đồ nhiệt Grad-CAM lên trên"""
     print("\n-> Đang tạo Bản đồ nhiệt Grad-CAM để giải thích mô hình...")
+
+    normal_indices = np.where(y_test == 0)[0]
+    jam_indices = np.where(y_test == 1)[0]
     
-    # Lấy 1 mẫu NORMAL và 1 mẫu JAM từ tập Test
-    normal_idx = np.where(y_test == 0)[0][0]
-    jam_idx = np.where(y_test == 1)[0][0]
+    if len(normal_indices) == 0 or len(jam_indices) == 0:
+        print("Không đủ cả nhãn NORMAL và JAM trong tập Test để vẽ Grad-CAM!")
+        return
+
+    normal_idx = normal_indices[0]
+    jam_idx = jam_indices[0]
 
     samples = [normal_idx, jam_idx]
     titles = ['NORMAL (Nhãn 0)', 'JAM (Nhãn 1)']
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-    fig.suptitle('EXPLAINABLE AI: BẢN ĐỒ NHIỆT GRAD-CAM (Mạng CNN đang tập trung vào đâu?)', fontsize=14, fontweight='bold')
+    fig.suptitle('EXPLAINABLE AI: BẢN ĐỒ NHIỆT GRAD-CAM', fontsize=14, fontweight='bold')
 
     for i, idx in enumerate(samples):
-        # Lấy dữ liệu 1 mẫu (Thêm chiều batch size ở đầu)
         x1_sample = np.expand_dims(X1_test[idx], axis=0)
         x2_sample = np.expand_dims(X2_test[idx], axis=0)
 
-        # Tạo heatmap
         heatmap = make_gradcam_heatmap(x1_sample, x2_sample, model)
-        
-        # Ảnh gốc (Bỏ chiều channel)
         img_original = X2_test[idx][:, :, 0]
 
-        # Vẽ ảnh gốc (Quỹ đạo trắng đen)
         axes[i].imshow(img_original.T, cmap='gray_r', origin='lower', extent=[-1.1, 1.1, -1.1, 1.1])
-        
-        # Phủ bản đồ nhiệt lên trên (Dùng tham số alpha để làm trong suốt)
-        # Interpolation 'bilinear' giúp làm mịn bản đồ nhiệt từ kích thước nhỏ (vd: 15x15) lên 64x64
         axes[i].imshow(heatmap.T, cmap='jet', alpha=0.5, origin='lower', extent=[-1.1, 1.1, -1.1, 1.1], interpolation='bilinear')
-        
-        # Tính toán xem mô hình tự tin bao nhiêu %
+
         pred_score = model.predict([x1_sample, x2_sample], verbose=0)[0][0]
-        
+
         axes[i].set_title(f"{titles[i]} | AI Dự đoán JAM: {pred_score*100:.1f}%")
         axes[i].set_xlabel('U (chuẩn hóa)')
         axes[i].set_ylabel('I (chuẩn hóa)')
@@ -227,59 +214,83 @@ def display_gradcam_overlay(X1_test, X2_test, y_test, model):
     plt.show()
 
 # =========================================================
-# 4. HÀM CHÍNH
+# 4. HÀM CHÍNH VÀ CÁC HÀM PHỤ TRỢ 
 # =========================================================
+def load_files_to_dataset(file_list, window_size):
+    """Hàm phụ: Đọc danh sách file và tạo Dataset"""
+    X1, X2, y = [], [], []
+    for idx, file_path in enumerate(file_list, 1):
+        print(f"   + Xử lý file [{idx}/{len(file_list)}]: {os.path.basename(file_path)}")
+        try:
+            df = pd.read_csv(file_path)
+            x1_chunk, x2_chunk, y_chunk = process_data_to_hybrid_inputs(df, window_size=window_size)
+            X1.extend(x1_chunk)
+            X2.extend(x2_chunk)
+            y.extend(y_chunk)
+            print(f"     -> Trích xuất được {len(y_chunk)} mẫu từ file này.")
+        except Exception as e:
+            print(f"   ! Lỗi khi đọc file {file_path}: {e}")
+    return np.array(X1), np.array(X2), np.array(y)
+
 def main():
-    print("=== HUẤN LUYỆN HYBRID CNN (1D + 2D) - WINDOW 5 - CẮT 6000 ĐIỂM ===")
+    print("=== HUẤN LUYỆN HYBRID CNN (1D + 2D) - DÙNG TOÀN BỘ FILE EXCEL ===")
     folder_path = input("Nhập đường dẫn Folder chứa file CSV (Bỏ trống để dùng giả lập): ")
     window_size = 5
 
-    X1_all, X2_all, y_all = [], [], []
-
-    # --- BƯỚC 1: TẠO DATASET ---
     if folder_path.strip() == "":
-        print("-> Đang tạo dữ liệu giả lập...")
-        for _ in range(3):
-            t = np.linspace(0, 1000 * np.pi, 20000)
-            u = 220 * np.sin(t)
-            i = np.where(t < 500 * np.pi,
-                         3.6 * np.sin(t + np.pi/6) + np.random.normal(0, 0.2, len(t)),
-                         15.0 * np.sin(t + np.pi/4) + np.random.normal(0, 1.0, len(t)) + 2.0)
-            event = ['NORMAL' if time < 500 * np.pi else 'JAM' for time in t]
+        print("\n-> Đang tạo dữ liệu giả lập...")
+        def gen_sim_data(num_files):
+            x1_list, x2_list, y_list = [], [], []
+            for _ in range(num_files):
+                t = np.linspace(0, 1000 * np.pi, 20000)
+                u = 220 * np.sin(t)
+                i = np.where(t < 500 * np.pi,
+                             3.6 * np.sin(t + np.pi/6) + np.random.normal(0, 0.2, len(t)),
+                             15.0 * np.sin(t + np.pi/4) + np.random.normal(0, 1.0, len(t)) + 2.0)
+                event = ['NORMAL' if time < 500 * np.pi else 'JAM' for time in t]
+                df_sim = pd.DataFrame({'Uwave': u, 'Iwave': i, 'Event': event})
+                x1, x2, y = process_data_to_hybrid_inputs(df_sim, window_size=window_size)
+                x1_list.extend(x1); x2_list.extend(x2); y_list.extend(y)
+            return np.array(x1_list), np.array(x2_list), np.array(y_list)
 
-            df_sim = pd.DataFrame({'Uwave': u, 'Iwave': i, 'Event': event})
-            x1, x2, y = process_data_to_hybrid_inputs(df_sim, window_size=window_size)
-            X1_all.extend(x1); X2_all.extend(x2); y_all.extend(y)
+        X1_train, X2_train, y_train = gen_sim_data(3)
+        X1_test, X2_test, y_test = gen_sim_data(1)
+        
     else:
         csv_files = glob.glob(os.path.join(folder_path, '*.csv'))
-        if not csv_files:
-            print(f"Không tìm thấy file .csv nào trong {folder_path}!")
+        if len(csv_files) == 0:
+            print(f"Không tìm thấy file CSV nào trong {folder_path}!")
             return
+            
+        print(f"\n-> Đã tìm thấy tổng cộng {len(csv_files)} files. Sẽ lấy 100% dữ liệu có trong file.")
+        
+        # --- ĐÃ SỬA TẠI ĐÂY ---
+        # Đổi test_size = 0.30 (70% Train, 30% Test)
+        if len(csv_files) > 1:
+            train_files, test_files = train_test_split(csv_files, test_size=0.30, random_state=42)
+        else:
+            # Nếu bạn chỉ nhét duy nhất 1 file dài vào thư mục, đành phải lấy nó cho cả Train và Test để code chạy qua được
+            train_files = test_files = csv_files
+            print("\nCẢNH BÁO: Chỉ có 1 file trong thư mục. Đang ép dùng chung cho cả Train và Test.")
 
-        for idx, file_path in enumerate(csv_files, 1):
-            print(f"-> Đang xử lý file [{idx}/{len(csv_files)}]: {os.path.basename(file_path)}")
-            try:
-                df = pd.read_csv(file_path)
-                x1, x2, y = process_data_to_hybrid_inputs(df, window_size=window_size)
-                X1_all.extend(x1); X2_all.extend(x2); y_all.extend(y)
-            except Exception as e:
-                print(f"Lỗi: {e}")
+        print(f"-> Chia {len(train_files)} files cho tập TRAIN và {len(test_files)} files cho tập TEST.")
 
-    X1_all, X2_all, y_all = np.array(X1_all), np.array(X2_all), np.array(y_all)
+        print("\n=== ĐANG TẠO TẬP TRAIN ===")
+        X1_train, X2_train, y_train = load_files_to_dataset(train_files, window_size)
 
-    print(f"\n-> Tổng số mẫu (Windows = {window_size}): {len(y_all)}")
-    if len(y_all) == 0:
-        print("Tập dữ liệu rỗng. Kết thúc!")
+        print("\n=== ĐANG TẠO TẬP TEST ===")
+        X1_test, X2_test, y_test = load_files_to_dataset(test_files, window_size)
+
+    if len(y_train) == 0 or len(y_test) == 0:
+        print("\nDữ liệu Train hoặc Test bị rỗng. Vui lòng kiểm tra lại file CSV của bạn!")
         return
-    print(f"-> Số mẫu NORMAL (0): {np.sum(y_all == 0)} | Số mẫu JAM (1): {np.sum(y_all == 1)}")
 
-    # --- BƯỚC 2: TRAIN-TEST SPLIT ---
-    X1_train, X1_test, X2_train, X2_test, y_train, y_test = train_test_split(
-        X1_all, X2_all, y_all, test_size=0.2, random_state=42, stratify=y_all
-    )
+    print(f"\n-> TỔNG QUAN DỮ LIỆU SAU KHI GỘP TẤT CẢ:")
+    print(f"   + TRAIN: {len(y_train)} mẫu (NORMAL: {np.sum(y_train==0)}, JAM: {np.sum(y_train==1)})")
+    print(f"   + TEST:  {len(y_test)} mẫu (NORMAL: {np.sum(y_test==0)}, JAM: {np.sum(y_test==1)})")
 
-    # --- BƯỚC 3: XÂY DỰNG VÀ HUẤN LUYỆN MÔ HÌNH ---
-    print(f"\n-> Khởi tạo mô hình Hybrid CNN (1D: {X1_all.shape[1:]}, 2D: {X2_all.shape[1:]})...")
+    # --- HUẤN LUYỆN MÔ HÌNH ---
+    print(f"\n-> Khởi tạo mô hình Hybrid CNN...")
     model = build_hybrid_cnn(input_shape_1d=(window_size * 50, 2), input_shape_2d=(64, 64, 1))
 
     early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
@@ -287,15 +298,15 @@ def main():
     history = model.fit(
         x=[X1_train, X2_train],
         y=y_train,
-        validation_split=0.2,
+        validation_split=0.2, 
         epochs=30,
         batch_size=32,
         callbacks=[early_stop],
         verbose=1
     )
 
-    # --- BƯỚC 4: ĐÁNH GIÁ VÀ TRỰC QUAN HÓA ---
-    print("\n-> Đang đánh giá trên tập Test...")
+    # --- ĐÁNH GIÁ TRÊN TẬP TEST ---
+    print("\n-> Đang đánh giá trên tập Test ...")
     y_pred_prob = model.predict([X1_test, X2_test])
     y_pred = (y_pred_prob >= 0.5).astype(int).flatten()
 
@@ -321,15 +332,17 @@ def main():
     plt.tight_layout()
     plt.show()
 
-    # === GỌI HÀM VẼ BẢN ĐỒ NHIỆT GRAD-CAM Ở ĐÂY ===
+    # BẢN ĐỒ NHIỆT
     display_gradcam_overlay(X1_test, X2_test, y_test, model)
-    # ===============================================
 
     print("\n-> Đang đóng gói và tải mô hình về máy...")
     model.save('hybrid_cnn_jam.h5')
-    from google.colab import files
-    files.download('hybrid_cnn_jam.h5')
-    print("-> Xong! Vui lòng kiểm tra thư mục Download trên máy tính.")
+    try:
+        from google.colab import files
+        files.download('hybrid_cnn_jam.h5')
+        print("-> Xong! Vui lòng kiểm tra thư mục Download trên máy tính.")
+    except:
+        print("-> Mô hình đã được lưu tại thư mục hiện tại: hybrid_cnn_jam.h5")
 
 if __name__ == "__main__":
     main()
