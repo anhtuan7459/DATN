@@ -1,0 +1,2 @@
+../Core/Src/linked_list.c:53:19:MX_Queue_tx_Config	128	static
+../Core/Src/linked_list.c:94:19:MX_Queue_rx_Config	128	static

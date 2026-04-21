@@ -1,0 +1,15 @@
+../Core/Src/bl0940_driver.c:91:13:WriteRegister	1
+../Core/Src/bl0940_driver.c:100:6:SetNoLoadThreshold	1
+../Core/Src/bl0940_driver.c:104:6:BL0940_SetFrequency	2
+../Core/Src/bl0940_driver.c:115:6:BL0940_SetUpdateRate	2
+../Core/Src/bl0940_driver.c:126:6:BL0940_CheckConfig	1
+../Core/Src/bl0940_driver.c:139:6:BL0940_Reset	1
+../Core/Src/bl0940_driver.c:143:6:BL0940_TimerInit	1
+../Core/Src/bl0940_driver.c:147:6:SensorBuffer_SendToUSB_Binary	6
+../Core/Src/bl0940_driver.c:180:6:SensorBuffer_SendToUSB_Binary_Time	7
+../Core/Src/bl0940_driver.c:255:6:BL0940_Request	1
+../Core/Src/bl0940_driver.c:262:6:HAL_TIM_PeriodElapsedCallback	4
+../Core/Src/bl0940_driver.c:274:6:HAL_SPI_TxRxCpltCallback	11
+../Core/Src/bl0940_driver.c:365:6:BL0940_Init	1
+../Core/Src/bl0940_driver.c:377:5:getActivePowerRaw	3
+../Core/Src/bl0940_driver.c:404:5:BL0940_CheckSensorDirection	5

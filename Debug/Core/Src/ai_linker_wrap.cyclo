@@ -1,0 +1,2 @@
+../Core/Src/ai_linker_wrap.c:6:7:__wrap_malloc	1
+../Core/Src/ai_linker_wrap.c:11:6:__wrap_free	1

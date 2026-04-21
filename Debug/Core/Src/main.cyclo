@@ -1,0 +1,4 @@
+../Core/Src/main.c:646:6:Error_Handler	2
+../Core/Src/main.c:159:6:SystemClock_Config	3
+../Core/Src/main.c:89:5:main	21
+../Core/Src/main.c:574:6:MX_USB_PCD_Init	1

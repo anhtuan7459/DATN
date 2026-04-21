@@ -1,0 +1,9 @@
+../Core/Src/sysmem.c:57:7:_sbrk	8	static
+../Core/Src/sysmem.c:85:5:_write	8	static
+../Core/Src/sysmem.c:92:5:_read	0	static
+../Core/Src/sysmem.c:100:5:_close	0	static
+../Core/Src/sysmem.c:106:5:_fstat	0	static
+../Core/Src/sysmem.c:113:5:_isatty	0	static
+../Core/Src/sysmem.c:119:5:_lseek	0	static
+../Core/Src/sysmem.c:127:5:_getpid	0	static
+../Core/Src/sysmem.c:132:5:_kill	8	static

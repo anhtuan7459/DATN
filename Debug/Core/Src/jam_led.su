@@ -1,0 +1,3 @@
+../Core/Src/jam_led.c:10:6:JamLed_SetMeasuring	0	static
+../Core/Src/jam_led.c:15:6:JamLed_SetJam	0	static
+../Core/Src/jam_led.c:20:6:JamLed_Service	0	static
