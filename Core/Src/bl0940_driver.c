@@ -65,14 +65,20 @@ static UCHAR usb_binary_buffer[USB_BINARY_BUFFER_SIZE];
 
 float bl0940_convert_current_wave(uint32_t raw_wave)
 {
-    int32_t raw_signed = (int32_t)(raw_wave << 8);
-    return (float)raw_signed * 1.218f / ((324004.0f * 3.3f * 10000.0f) / 2000.0f);
+    int32_t raw20 = (int32_t)(raw_wave & 0x000FFFFFu);
+    if ((raw20 & 0x00080000u) != 0u) {
+        raw20 |= (int32_t)0xFFF00000u;
+    }
+    return (float)raw20 * 1.218f * 50.4f / ((324004.0f * 3.3f * 1000.0f) / 2000.0f);
 }
 
 float bl0940_convert_voltage_wave(uint32_t raw_wave)
 {
-    int32_t raw_signed = (int32_t)(raw_wave << 8);
-    return (float)raw_signed * 1.218f * 100000.0f / (79931.0f * 24.0f);
+    int32_t raw20 = (int32_t)(raw_wave & 0x000FFFFFu);
+    if ((raw20 & 0x00080000u) != 0u) {
+        raw20 |= (int32_t)0xFFF00000u;
+    }
+    return (float)raw20 * 1.218f * 100.0f * 49.3f / (79931.0f * 24.0f);
 }
 
 static uint8_t calculateChecksum(uint8_t *rxData, uint8_t state, uint8_t address) {
@@ -146,7 +152,7 @@ void SensorBuffer_SendToUSB_Binary(void) {
             for (int j = 0; j < RECORD_COUNT; j++) {
                 SensorRecord *rec = &sensor_buffers[i].records[j];
 
-                float voltage = rec->voltage * 1.218f * 100000.0f / (79931.0f * 24.0f);
+                float voltage = rec->voltage * 1.218f * 100.0f / (79931.0f * 24.0f);
                 float current = rec->current * 1.218f / ((324004.0f * 3.3f * 1000.0f) / 2000.0f);
                 float power   = rec->power * 1.218f * 1.218f * 100.0f / (4046.0f * (3.3f * 1000.0f / 2000.0f) * 24.0f);
                 float phase   = 2.0f * 3.1415926535f * rec->phase * (50.0f / 1000000.0f);
@@ -186,7 +192,7 @@ void SensorBuffer_SendToUSB_Binary_Time(void) {
             for (int j = 0; j < RECORD_COUNT; j++) {
                 SensorRecord *rec = &sensor_buffers[i].records[j];
 
-                float voltage = rec->voltage * 1.218f * 100000.0f / (79931.0f * 24.0f);
+                float voltage = rec->voltage * 1.218f * 100.0f / (79931.0f * 24.0f);
                 float current = rec->current * 1.218f / ((324004.0f * 3.3f * 1000.0f) / 2000.0f);
 
                 int32_t rawPower = (int32_t)rec->power;
@@ -223,7 +229,7 @@ void SensorBuffer_SendToUSB_Binary_Time(void) {
             *ptr++ = g_jam_ai_status.ready;
             *ptr++ = g_jam_ai_status.last_jam;
             *ptr++ = g_jam_ai_status.last_output_u8;
-            *ptr++ = g_jam_ai_status.reserved;
+            *ptr++ = (uint8_t)(g_jam_ai_status.run_count & 0xFFu);
             float ai_score = g_jam_ai_status.last_score;
             memcpy(ptr, &ai_score, sizeof(float)); ptr += 4;
             uint32_t ai_us = g_jam_ai_status.last_time_us;
