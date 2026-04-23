@@ -1,4 +1,4 @@
-# File nay danh cho THU VIEN de chay code quantization/inference tren PC
+# NOTE: File nay la THU VIEN Python de chay quantization/inference tren PC (dung voi pip install -r)
 numpy
 pyserial
 tensorflow
