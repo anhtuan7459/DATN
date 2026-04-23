@@ -1,0 +1,5 @@
+# File nay danh cho THU VIEN de chay code quantization/inference tren PC
+numpy
+pyserial
+tensorflow
+tensorflow-model-optimization

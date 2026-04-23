@@ -1,0 +1,7 @@
+# File nay danh cho PHAN MEM NAP CODE STM32 va AI deploy
+STM32CubeIDE>=1.18
+STM32CubeMX>=6.14
+X-CUBE-AI>=10.0
+ST-LINK USB Driver (latest)
+STM32CubeProgrammer (latest)
+# Len trang chu cai ban moi nhat tuong ung voi CubeMX va X-CUBE-AI
