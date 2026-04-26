@@ -4,62 +4,32 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import optuna
+import gc # Thư viện dọn rác RAM
 
 # Thư viện Deep Learning
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Dropout
-from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau # Thêm ReduceLROnPlateau
 
-# Thư viện Machine Learning (Thêm KFold)
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.model_selection import KFold
-
-# BỘ THÔNG SỐ VÔ ĐỊCH TỪ OPTUNA CỦA BẠN
-BEST_PARAMS = {
-    'conv1_filters': 32,
-    'conv2_filters': 64,
-    'conv3_filters': 128,
-    'dense_units': 64,
-    'dropout_rate': 0.327, # Làm tròn từ 0.32704
-    'learning_rate': 0.0001 # Làm tròn từ 0.0001007
-}
+# Thư viện Machine Learning
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, roc_curve, accuracy_score
+from sklearn.model_selection import GroupKFold, GroupShuffleSplit
 
 # =========================================================
-# CÁC HÀM TIỀN XỬ LÝ VÀ GRAD-CAM GIỮ NGUYÊN HOÀN TOÀN
+# 1. HÀM TIỀN XỬ LÝ 2D (QUỸ ĐẠO I-V)
 # =========================================================
-def plot_raw_1d_signals(df_sliced, state_col, u_col, i_col):
-    plt.figure(figsize=(15, 5))
-    u_norm = df_sliced[u_col] / (df_sliced[u_col].abs().max() + 1e-9)
-    i_norm = df_sliced[i_col] / (df_sliced[i_col].abs().max() + 1e-9)
-    plt.plot(u_norm, label=f'{u_col} (Normalized)', alpha=0.7, color='blue')
-    plt.plot(i_norm, label=f'{i_col} (Normalized)', alpha=0.7, color='orange')
-    jam_indices = df_sliced.index[df_sliced[state_col] == 'JAM'].tolist()
-    if jam_indices:
-        start_jam = jam_indices[0]
-        plt.axvline(x=start_jam, color='red', linestyle='--', linewidth=2, label='Start of JAM Event')
-    plt.title("Biểu đồ tín hiệu 1D (Toàn bộ File)", fontsize=14, fontweight='bold')
-    plt.xlabel("Index (Data Points)")
-    plt.ylabel("Biên độ (Chuẩn hóa)")
-    plt.legend()
-    plt.grid(True, linestyle=':', alpha=0.6)
-    plt.tight_layout()
-    plt.show()
-
-def process_data_to_2d_inputs(df, num_points=50, grid_size=64, window_size=30):
+def process_data_to_2d_inputs(df, num_points=50, grid_size=64, window_size=5):
     state_col = 'Event' if 'Event' in df.columns else 'EVENT'
-    u_col_2d = 'Uwave' if 'Uwave' in df.columns else 'Voltage[V]'
-    i_col_2d = 'Iwave' if 'Iwave' in df.columns else 'Current[A]'
+    u_col = 'Uwave' if 'Uwave' in df.columns else 'Voltage[V]'
+    i_col = 'Iwave' if 'Iwave' in df.columns else 'Current[A]'
+
     df_sliced = df.copy().reset_index(drop=True)
     events = df_sliced[state_col].values
+    u_raw = df_sliced[u_col].values
+    i_raw = df_sliced[i_col].values
 
-    if 'first_plot_done' not in globals():
-        plot_raw_1d_signals(df_sliced, state_col, u_col_2d, i_col_2d)
-        global first_plot_done
-        first_plot_done = True
-
-    u_raw = df_sliced[u_col_2d].values
-    i_raw = df_sliced[i_col_2d].values
     zero_crossings = np.where((u_raw[:-1] < 0) & (u_raw[1:] >= 0))[0]
 
     cycles_raw = []
@@ -90,58 +60,174 @@ def process_data_to_2d_inputs(df, num_points=50, grid_size=64, window_size=30):
         mean_cycle = np.mean(chunk_array, axis=0)
         u_window = mean_cycle[:, 0]
         i_window = mean_cycle[:, 1]
+
         u_norm = u_window / (np.max(np.abs(u_window)) + 1e-9)
         i_norm = i_window / (np.max(np.abs(i_window)) + 1e-9)
 
         heatmap, _, _ = np.histogram2d(u_norm, i_norm, bins=(bins, bins))
         window_2d = heatmap / (heatmap.max() + 1e-9)
         window_2d = window_2d[..., np.newaxis]
+
         X_2d_list.append(window_2d)
         y_list.append(1 if str(majority_label).upper() == 'JAM' else 0)
 
     return X_2d_list, y_list
 
 def load_files_to_dataset(file_list, window_size):
-    X_2d, y = [], []
-    for idx, file_path in enumerate(file_list, 1):
+    X_2d, y, groups = [], [], []
+    for file_id, file_path in enumerate(file_list):
         try:
             df = pd.read_csv(file_path)
             x2_chunk, y_chunk = process_data_to_2d_inputs(df, window_size=window_size)
             X_2d.extend(x2_chunk)
             y.extend(y_chunk)
+            groups.extend([file_id] * len(y_chunk)) 
         except Exception as e:
             pass
-    return np.array(X_2d), np.array(y)
+    return np.array(X_2d), np.array(y), np.array(groups)
 
 # =========================================================
-# XÂY DỰNG MÔ HÌNH CNN VỚI THÔNG SỐ CỐ ĐỊNH
+# 2. XÂY DỰNG MÔ HÌNH CNN THUẦN
 # =========================================================
-def build_2d_cnn(input_shape_2d=(64, 64, 1)):
+def build_2d_cnn(params, input_shape_2d=(64, 64, 1)):
     input_2d = Input(shape=input_shape_2d)
 
-    x = Conv2D(filters=BEST_PARAMS['conv1_filters'], kernel_size=(3, 3), activation='relu')(input_2d)
+    x = Conv2D(filters=params['conv1_filters'], kernel_size=(3, 3), activation='relu')(input_2d)
     x = MaxPooling2D(pool_size=(2, 2))(x)
 
-    x = Conv2D(filters=BEST_PARAMS['conv2_filters'], kernel_size=(3, 3), activation='relu')(x)
+    x = Conv2D(filters=params['conv2_filters'], kernel_size=(3, 3), activation='relu')(x)
     x = MaxPooling2D(pool_size=(2, 2))(x)
 
-    x = Conv2D(filters=BEST_PARAMS['conv3_filters'], kernel_size=(3, 3), activation='relu', name="last_conv2d_layer")(x)
+    x = Conv2D(filters=params['conv3_filters'], kernel_size=(3, 3), activation='relu', name="last_conv2d_layer")(x)
     x = MaxPooling2D(pool_size=(2, 2))(x)
 
     flat_2d = Flatten()(x)
 
-    x = Dense(BEST_PARAMS['dense_units'], activation='relu')(flat_2d)
-    x = Dropout(BEST_PARAMS['dropout_rate'])(x)
+    x = Dense(params['dense_units'], activation='relu')(flat_2d)
+    x = Dropout(params['dropout_rate'])(x)
 
-    x = Dense(64, activation='relu')(x)
     output = Dense(1, activation='sigmoid', name="Output")(x)
 
     model = Model(inputs=input_2d, outputs=output)
-
-    optimizer = tf.keras.optimizers.Adam(learning_rate=BEST_PARAMS['learning_rate'])
+    optimizer = tf.keras.optimizers.Adam(learning_rate=params['learning_rate'])
     model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
 
     return model
+
+# =========================================================
+# 3. HÀM MỤC TIÊU OPTUNA (ROC AUC + REDUCE_LR)
+# =========================================================
+def objective(trial, X_cv, y_cv, groups_cv):
+    params = {
+        'conv1_filters': trial.suggest_categorical('conv1_filters', [16, 32, 64]),
+        'conv2_filters': trial.suggest_categorical('conv2_filters', [32, 64, 128]),
+        'conv3_filters': trial.suggest_categorical('conv3_filters', [64, 128, 256]),
+        'dense_units': trial.suggest_categorical('dense_units', [32, 64, 128]),
+        'dropout_rate': trial.suggest_float('dropout_rate', 0.2, 0.6),
+        'learning_rate': trial.suggest_float('learning_rate', 1e-5, 5e-4, log=True)
+    }
+
+    gkf = GroupKFold(n_splits=3)
+    cv_auc_scores = []
+    epochs_list = []
+
+    for train_index, val_index in gkf.split(X_cv, y_cv, groups=groups_cv):
+        tf.keras.backend.clear_session()
+        X_train, X_val = X_cv[train_index], X_cv[val_index]
+        y_train, y_val = y_cv[train_index], y_cv[val_index]
+
+        model = build_2d_cnn(params)
+
+        early_stop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=10, restore_best_weights=True)
+        
+        # LIỀU THUỐC 1: Tự động giảm Learning Rate nếu Validation Loss có dấu hiệu khựng lại
+        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=1e-7, verbose=0)
+
+        history = model.fit(
+            X_train, y_train,
+            validation_data=(X_val, y_val),
+            epochs=30,
+            batch_size=64, 
+            callbacks=[early_stop, reduce_lr], # Gắn phanh vào đây
+            verbose=0
+        )
+
+        actual_epochs = len(history.history['loss'])
+        best_epoch = actual_epochs - 10 if actual_epochs > 10 else actual_epochs
+        epochs_list.append(best_epoch)
+
+        y_pred_prob = model.predict(X_val, verbose=0).flatten()
+        auc = roc_auc_score(y_val, y_pred_prob)
+        cv_auc_scores.append(auc)
+
+    trial.set_user_attr('best_epoch', int(np.mean(epochs_list)))
+    return np.mean(cv_auc_scores)
+
+# =========================================================
+# VẼ ĐỒ THỊ SO SÁNH & CÁC ĐỒ THỊ KHÁC
+# =========================================================
+def plot_window_size_comparison(leaderboard):
+    df_lb = pd.DataFrame(leaderboard)
+    
+    plt.figure(figsize=(10, 6))
+    ax = sns.barplot(x='Window Size', y='Best ROC AUC', data=df_lb, palette='viridis')
+    
+    # Vẽ thêm đường nối để dễ nhìn xu hướng
+    plt.plot(range(len(df_lb)), df_lb['Best ROC AUC'], color='red', marker='o', linewidth=2)
+    
+    # Hiển thị số liệu trên đầu các cột
+    for i, v in enumerate(df_lb['Best ROC AUC']):
+        ax.text(i, v + 0.005, f"{v:.4f}", ha='center', fontweight='bold')
+        
+    plt.title('SO SÁNH HIỆU NĂNG ROC AUC GIỮA CÁC WINDOW SIZES (3 -> 7)', fontsize=14, fontweight='bold')
+    plt.xlabel('Window Size (Số chu kỳ gộp)', fontsize=12)
+    plt.ylabel('ROC AUC Score', fontsize=12)
+    plt.ylim(0.5, 1.05) # Đặt trục Y từ 0.5 đến 1 cho dễ nhìn
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.show()
+
+def plot_learning_curves(history):
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['loss'], label='Train Loss', color='blue', marker='o')
+    plt.plot(history.history['val_loss'], label='Valid Loss', color='orange', marker='o')
+    plt.title('Đồ thị Loss (Final Model)')
+    plt.xlabel('Epochs'); plt.ylabel('Loss')
+    plt.legend(); plt.grid(True, linestyle='--', alpha=0.6)
+
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['accuracy'], label='Train Accuracy', color='green', marker='o')
+    plt.plot(history.history['val_accuracy'], label='Valid Accuracy', color='red', marker='o')
+    plt.title('Đồ thị Accuracy (Final Model)')
+    plt.xlabel('Epochs'); plt.ylabel('Accuracy')
+    plt.legend(); plt.grid(True, linestyle='--', alpha=0.6)
+    plt.tight_layout()
+    plt.show()
+
+def plot_roc_curve_and_find_threshold(y_true, y_pred_prob):
+    fpr, tpr, thresholds = roc_curve(y_true, y_pred_prob)
+    auc_score = roc_auc_score(y_true, y_pred_prob)
+    
+    J = tpr - fpr
+    optimal_idx = np.argmax(J)
+    optimal_threshold = thresholds[optimal_idx]
+
+    plt.figure(figsize=(7, 6))
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {auc_score:.4f})')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.scatter(fpr[optimal_idx], tpr[optimal_idx], marker='o', color='red', s=100, label=f'Optimal Threshold = {optimal_threshold:.3f}')
+    
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate (Báo động giả)')
+    plt.ylabel('True Positive Rate (Độ nhạy)')
+    plt.title('Đường cong ROC và Ngưỡng tối ưu')
+    plt.legend(loc="lower right")
+    plt.grid(True, linestyle=':', alpha=0.6)
+    plt.show()
+    
+    return optimal_threshold
 
 def make_gradcam_heatmap(input_2d_array, model, last_conv_layer_name="last_conv2d_layer"):
     grad_model = tf.keras.models.Model(model.inputs, [model.get_layer(last_conv_layer_name).output, model.output])
@@ -156,7 +242,7 @@ def make_gradcam_heatmap(input_2d_array, model, last_conv_layer_name="last_conv2
     heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
     return heatmap.numpy()
 
-def display_gradcam_overlay(X_test, y_test, model, num_samples=3):
+def display_gradcam_overlay(X_test, y_test, model, optimal_threshold, num_samples=3):
     normal_indices = np.where(y_test == 0)[0]
     jam_indices = np.where(y_test == 1)[0]
     n_normal = min(num_samples, len(normal_indices))
@@ -164,10 +250,9 @@ def display_gradcam_overlay(X_test, y_test, model, num_samples=3):
     n_cols = max(n_normal, n_jam)
 
     if n_cols == 0: return
-
     fig, axes = plt.subplots(2, n_cols, figsize=(5 * n_cols, 8))
     if n_cols == 1: axes = axes.reshape(2, 1)
-    fig.suptitle('EXPLAINABLE AI: BẢN ĐỒ NHIỆT GRAD-CAM QUỸ ĐẠO I-V', fontsize=16, fontweight='bold', y=1.02)
+    fig.suptitle('BẢN ĐỒ NHIỆT GRAD-CAM QUỸ ĐẠO I-V', fontsize=16, fontweight='bold', y=1.02)
 
     for i in range(n_cols):
         ax = axes[0, i]
@@ -175,11 +260,10 @@ def display_gradcam_overlay(X_test, y_test, model, num_samples=3):
             idx = normal_indices[i]
             x_sample = np.expand_dims(X_test[idx], axis=0)
             heatmap = make_gradcam_heatmap(x_sample, model)
-            img_original = X_test[idx][:, :, 0]
-            ax.imshow(img_original.T, cmap='gray_r', origin='lower', extent=[-1.1, 1.1, -1.1, 1.1])
+            ax.imshow(X_test[idx][:, :, 0].T, cmap='gray_r', origin='lower', extent=[-1.1, 1.1, -1.1, 1.1])
             ax.imshow(heatmap.T, cmap='jet', alpha=0.5, origin='lower', extent=[-1.1, 1.1, -1.1, 1.1], interpolation='bilinear')
             pred_score = model.predict(x_sample, verbose=0)[0][0]
-            ax.set_title(f"NORMAL (Mẫu {i+1})\nAI Dự đoán JAM: {pred_score*100:.1f}%", fontsize=11, color='green' if pred_score < 0.5 else 'red')
+            ax.set_title(f"NORMAL\nProbability: {pred_score:.3f}", color='green' if pred_score < optimal_threshold else 'red')
         else: ax.axis('off')
 
     for i in range(n_cols):
@@ -188,112 +272,136 @@ def display_gradcam_overlay(X_test, y_test, model, num_samples=3):
             idx = jam_indices[i]
             x_sample = np.expand_dims(X_test[idx], axis=0)
             heatmap = make_gradcam_heatmap(x_sample, model)
-            img_original = X_test[idx][:, :, 0]
-            ax.imshow(img_original.T, cmap='gray_r', origin='lower', extent=[-1.1, 1.1, -1.1, 1.1])
+            ax.imshow(X_test[idx][:, :, 0].T, cmap='gray_r', origin='lower', extent=[-1.1, 1.1, -1.1, 1.1])
             ax.imshow(heatmap.T, cmap='jet', alpha=0.5, origin='lower', extent=[-1.1, 1.1, -1.1, 1.1], interpolation='bilinear')
             pred_score = model.predict(x_sample, verbose=0)[0][0]
-            ax.set_title(f"JAM (Mẫu {i+1})\nAI Dự đoán JAM: {pred_score*100:.1f}%", fontsize=11, color='red' if pred_score >= 0.5 else 'green')
+            ax.set_title(f"JAM\nProbability: {pred_score:.3f}", color='red' if pred_score >= optimal_threshold else 'green')
         else: ax.axis('off')
     plt.tight_layout()
     plt.show()
 
 # =========================================================
-# HÀM MAIN: K-FOLD CROSS VALIDATION
+# HÀM MAIN: VÒNG LẶP WINDOW SIZE (3 -> 7)
 # =========================================================
 def main():
-    print("=== HUẤN LUYỆN K-FOLD VỚI BỘ THÔNG SỐ OPTUNA ===")
+    print("=== ĐẠI CHIẾN WINDOW SIZES (3 -> 7) & TỐI ƯU ROC AUC BẰNG OPTUNA ===")
 
-    # 1. Quản lý File: Gộp Train và Valid thành 1 hồ chứa (CV)
-    train_folder_path = input("Nhập đường dẫn Folder chứa file TRAIN (14 files): ")
-    val_folder_path = input("Nhập đường dẫn Folder chứa file VALIDATION (2 files): ")
-    test_folder_path = input("Nhập đường dẫn Folder chứa file TEST (4 files): ")
-    window_size = 5
+    train_folder = input("Nhập đường dẫn Folder chứa file TRAIN: ")
+    val_folder = input("Nhập đường dẫn Folder chứa file VALIDATION: ")
+    test_folder = input("Nhập đường dẫn Folder chứa file TEST: ")
 
-    train_files = glob.glob(os.path.join(train_folder_path, '*.csv'))
-    val_files = glob.glob(os.path.join(val_folder_path, '*.csv'))
-    cv_files = train_files + val_files # Gộp chung lại thành 16 files
-    test_files = glob.glob(os.path.join(test_folder_path, '*.csv'))
+    cv_files = glob.glob(os.path.join(train_folder, '*.csv')) + glob.glob(os.path.join(val_folder, '*.csv'))
+    test_files = glob.glob(os.path.join(test_folder, '*.csv'))
 
-    print(f"\n-> Đã tìm thấy {len(cv_files)} files cho K-Fold (Train+Val) và {len(test_files)} files TEST.")
+    leaderboard = []
+    best_overall_ws = 3
+    best_overall_auc = 0.0
+    best_overall_params = {}
+    best_overall_epochs = 0
 
-    print("\n=== ĐANG TRÍCH XUẤT ẢNH 2D CHO TẬP K-FOLD (CV) ===")
-    X_cv, y_cv = load_files_to_dataset(cv_files, window_size)
+    print("\n⏳ BẮT ĐẦU QUÉT WINDOW SIZE (TỪ 3 ĐẾN 7)...")
+    
+    for ws in range(3, 8):
+        print(f"\n" + "="*60)
+        print(f"⚙️ BẮT ĐẦU TỐI ƯU CHO WINDOW SIZE = {ws} ...")
+        
+        # Tiền xử lý dữ liệu cho Window Size hiện tại
+        X_cv, y_cv, groups_cv = load_files_to_dataset(cv_files, window_size=ws)
+        
+        if len(np.unique(y_cv)) < 2:
+            print(f"[Cảnh báo] Window Size = {ws} bị thiếu nhãn. Bỏ qua!")
+            continue
 
-    print("\n=== ĐANG TRÍCH XUẤT ẢNH 2D CHO TẬP TEST ===")
-    X_test, y_test = load_files_to_dataset(test_files, window_size)
+        # Chạy Optuna tìm tham số (10 trials để tốc độ vừa phải)
+        study = optuna.create_study(direction='maximize')
+        study.optimize(lambda trial: objective(trial, X_cv, y_cv, groups_cv), n_trials=10)
+        
+        ws_best_auc = study.best_value
+        ws_best_epoch = study.best_trial.user_attrs['best_epoch']
+        
+        # Ghi danh vào bảng xếp hạng
+        leaderboard.append({
+            'Window Size': ws,
+            'Best ROC AUC': ws_best_auc,
+            'Best Epochs': ws_best_epoch,
+            'Best Params': study.best_params
+        })
+        
+        # Tranh ngôi Vô Địch
+        if ws_best_auc > best_overall_auc:
+            best_overall_auc = ws_best_auc
+            best_overall_ws = ws
+            best_overall_params = study.best_params
+            best_overall_epochs = ws_best_epoch
+            
+        print(f" -> XONG WINDOW SIZE = {ws}. Đỉnh cao ROC AUC đạt: {ws_best_auc:.4f}")
+        
+        # Dọn dẹp RAM trước khi qua Window Size mới
+        del X_cv, y_cv, groups_cv
+        gc.collect()
 
-    # 2. Khởi tạo K-Fold 5 vòng
-    k_folds = 5
-    kf = KFold(n_splits=k_folds, shuffle=True, random_state=42)
+    # XUẤT BẢNG SO SÁNH LÊN MÀN HÌNH VÀ VẼ ĐỒ THỊ
+    print("\n🏆 BẢNG XẾP HẠNG TỔNG KẾT WINDOW SIZES (3 -> 7) 🏆")
+    df_leaderboard = pd.DataFrame(leaderboard).drop(columns=['Best Params']).set_index('Window Size')
+    print(df_leaderboard.to_markdown())
+    
+    # Gọi hàm vẽ đồ thị so sánh Bar Chart
+    plot_window_size_comparison(leaderboard)
 
-    fold_no = 1
-    cv_scores = []
+    print(f"\n👑 NHÀ VÔ ĐỊCH TUYỆT ĐỐI: WINDOW SIZE = {best_overall_ws} (ROC AUC: {best_overall_auc:.4f})")
+    print("Siêu tham số vô địch:")
+    for k, v in best_overall_params.items():
+        print(f"  + {k}: {v}")
 
-    print(f"\n=== BẮT ĐẦU CHẠY K-FOLD {k_folds} VÒNG ===")
-    for train_index, val_index in kf.split(X_cv):
-        print(f"\n-> Đang huấn luyện Vòng (Fold) {fold_no} ...")
+    # =========================================================
+    # HUẤN LUYỆN CHUNG KẾT VỚI NHÀ VÔ ĐỊCH
+    # =========================================================
+    print(f"\n🛠️ Tải lại dữ liệu chuẩn bị vinh danh Window Size = {best_overall_ws} ...")
+    X_cv, y_cv, groups_cv = load_files_to_dataset(cv_files, window_size=best_overall_ws)
+    X_test, y_test, _ = load_files_to_dataset(test_files, window_size=best_overall_ws)
 
-        # Giải phóng RAM cực kỳ quan trọng khi chạy nhiều model liên tiếp
-        tf.keras.backend.clear_session()
-
-        # Cắt dữ liệu thành phần học và phần thi cho vòng này
-        X_fold_train, X_fold_val = X_cv[train_index], X_cv[val_index]
-        y_fold_train, y_fold_val = y_cv[train_index], y_cv[val_index]
-
-        model = build_2d_cnn()
-
-        # Huấn luyện ngắn gọn trong nội bộ Fold
-        early_stop = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
-        model.fit(
-            X_fold_train, y_fold_train,
-            validation_data=(X_fold_val, y_fold_val),
-            epochs=20,
-            batch_size=32,
-            callbacks=[early_stop],
-            verbose=0 # Tắt bớt log để màn hình đỡ rối
-        )
-
-        # Chấm điểm Fold này
-        scores = model.evaluate(X_fold_val, y_fold_val, verbose=0)
-        acc = scores[1] * 100
-        print(f"   + Kết quả Vòng {fold_no}: Accuracy = {acc:.2f}%")
-        cv_scores.append(acc)
-        fold_no += 1
-
-    print("\n=== TỔNG KẾT K-FOLD ===")
-    print(f"Điểm trung bình hệ thống: {np.mean(cv_scores):.2f}% (+/- {np.std(cv_scores):.2f}%)")
-
-    # 3. Train Mô hình Final trên TOÀN BỘ dữ liệu CV để đi thi
-    print("\n-> Đang huấn luyện MÔ HÌNH CUỐI CÙNG (Final Model) trên 100% dữ liệu CV...")
+    print("\n⚙️ Đang huấn luyện Final Model để xuất Báo cáo...")
+    gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
+    train_idx, final_val_idx = next(gss.split(X_cv, y_cv, groups_cv))
+    
     tf.keras.backend.clear_session()
-    final_model = build_2d_cnn()
-
-    # Không còn tập Val nội bộ nữa, train thẳng trên X_cv
+    final_model = build_2d_cnn(best_overall_params)
+    
+    # Vẫn dùng ReduceLROnPlateau cho vòng thi cuối cùng cho chắc cú
+    early_stop_final = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=10, restore_best_weights=True)
+    reduce_lr_final = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=1e-7, verbose=1)
+    
     history = final_model.fit(
-        X_cv, y_cv,
-        epochs=25,
-        batch_size=32,
+        X_cv[train_idx], y_cv[train_idx],
+        validation_data=(X_cv[final_val_idx], y_cv[final_val_idx]),
+        epochs=best_overall_epochs,
+        batch_size=64, 
+        callbacks=[early_stop_final, reduce_lr_final],
         verbose=1
     )
 
-    # 4. Kỳ thi cuối cùng trên 4 File Test Cất Tủ
-    print("\n-> Đang đánh giá Final Model trên 4 Files Test...")
-    y_pred_prob = final_model.predict(X_test)
-    y_pred = (y_pred_prob >= 0.5).astype(int).flatten()
+    plot_learning_curves(history)
 
-    print("\n=== BÁO CÁO PHÂN LOẠI CUỐI CÙNG ===")
-    print(classification_report(y_test, y_pred, target_names=['NORMAL', 'JAM']))
+    print("\n🎯 ĐÁNH GIÁ TẬP TEST VÀ TÌM NGƯỠNG CẮT TỐI ƯU...")
+    y_pred_prob = final_model.predict(X_test).flatten()
+    
+    optimal_threshold = plot_roc_curve_and_find_threshold(y_test, y_pred_prob)
+    y_pred_optimal = (y_pred_prob >= optimal_threshold).astype(int)
 
-    # Vẽ Confusion Matrix
+    print(f"\n=== BÁO CÁO PHÂN LOẠI (Với Ngưỡng = {optimal_threshold:.3f}) ===")
+    print(classification_report(y_test, y_pred_optimal, target_names=['NORMAL', 'JAM']))
+
     plt.figure(figsize=(6, 5))
-    cm = confusion_matrix(y_test, y_pred)
+    cm = confusion_matrix(y_test, y_pred_optimal)
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['NORMAL', 'JAM'], yticklabels=['NORMAL', 'JAM'])
-    plt.title('Ma trận nhầm lẫn (Tập Test Cất Tủ)')
+    plt.title(f'Ma trận nhầm lẫn (Window={best_overall_ws}, Threshold={optimal_threshold:.3f})')
     plt.xlabel('Dự đoán'); plt.ylabel('Thực tế')
-    plt.tight_layout()
     plt.show()
 
-    display_gradcam_overlay(X_test, y_test, final_model, num_samples=3)
+    display_gradcam_overlay(X_test, y_test, final_model, optimal_threshold, num_samples=3)
+
+    final_model.save('best_2d_cnn_ws_roc_optimized.h5')
+    print("\n✅ Hoàn tất! Model vô địch đã được cất kho với tên 'best_2d_cnn_ws_roc_optimized.h5'")
 
 if __name__ == "__main__":
     main()

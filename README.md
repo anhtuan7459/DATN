@@ -1,47 +1,31 @@
-# 🚀 Hệ thống Nhận diện Kẹt tải Động cơ Thời gian thực (Real-time AI Jam Detection)
+![alt text](image-3.png)
+![alt text](image-4.png)
+![alt text](image-5.png)
+![alt text](image-6.png)
 
-Dự án Firmware nhúng trên vi điều khiển **STM32H562RGTX** kết hợp AI (TinyML) để phát hiện trạng thái kẹt (Jam) của tải động cơ điện xoay chiều thông qua tín hiệu dòng điện (I) và điện áp (U) trích xuất từ IC đo lường **BL0940**.
+## Tổng quan về quá trình huấn luyện (`Train.py`)
 
----
+File `Train.py` mô tả quy trình huấn luyện mô hình Deep Learning (Mạng nơ-ron tích chập - CNN 2D) nhằm phân loại và phát hiện sự cố kẹt (JAM) dựa trên tín hiệu dòng điện và điện áp. Quá trình bao gồm các bước chính thống qua phương pháp biến đổi chu kỳ dòng - áp thành ảnh học sâu:
 
-## 🛠 1. Kiến trúc Hệ thống (Hardware & OS)
-- **Vi điều khiển (MCU):** STM32H562RGTX (Lõi Cortex-M33 tốc độ cao, tích hợp phần cứng FPU).
-- **Cảm biến:** IC đo công suất và điện năng **BL0940** (Giao tiếp SPI 1kHz qua DMA).
-- **Hệ điều hành tích hợp:** Azure RTOS (ThreadX) đa luồng.
-- **Trí tuệ nhân tạo (TinyML):** X-CUBE-AI (Chạy mô hình mạng nén CNN 2D kích thước ~327KB Flash, dùng lượng tử hóa Int8).
-- **Giao thức ngoại vi:** USB Device (CDC-ACM) ảo hóa COM Port để truyền Data AI thời gian thực lên máy tính, UART Debug.
+### 1. Tiền xử lý dữ liệu (Chuyển đổi tín hiệu 1D sang ảnh Quỹ đạo I-V 2D)
+- **Tách chu kỳ:** Tín hiệu áp (`Uwave` / `Voltage`) và dòng (`Iwave` / `Current`) được cắt theo các điểm giao không (zero-crossings) của áp để trích xuất từng chu kỳ.
+- **Nội suy & Gom lưới (`window_size`):** Các chu kỳ được chuẩn hóa nội suy về 50 điểm và tự động gom nhóm theo cửa sổ trượt (window size biến thiên từ 3 đến 7 chu kỳ).
+- **Trích xuất Heatmap:** Chu kỳ dòng - áp sau khi chuẩn hóa tỷ lệ được đưa lên lưới tọa độ 2D tạo thành biểu diễn ảnh không gian (Heatmap) kích thước 64x64, qua đó biểu diễn quỹ đạo I-V. Đặc trưng nhị phân được gán nhãn `1` (JAM) và `0` (Normal).
 
----
+### 2. Kiến trúc Mô hình (2D CNN)
+- Hệ thống sử dụng một mạng nơ-ron tích chập 2D gồm 3 khối `Conv2D` đi kèm `MaxPooling2D` giúp trích lặp linh hoạt các kết cấu hình học độc lạ trên bức ảnh biểu đồ I-V.
+- Mạng truyền thẳng `Dense`, kết hợp giải pháp tránh học vẹt bằng tổ hợp `Dropout`, xuất ra giá trị nhị phân đánh giá qua hàm Sigmoid.
 
-## 📂 2. Cấu trúc Thư mục Dự án
+### 3. Công cụ tối ưu mô hình mạnh mẽ
+- **Tránh rò rỉ dữ liệu (Data Leakage):** Thay vì chia dữ liệu thông thường, kịch bản dùng `GroupKFold` 3-Fold tách biệt tập Train/Val dựa trên nguồn gốc từng File dữ liệu.
+- **So khớp với Optuna:** Khung tối ưu Optuna được thiết lập để tự động dò tìm dải tham số cấu hình mạnh nhất (Filters, Dropout, Dense nodes, Learning Rate) cho ra đánh giá ROC AUC cao nhất. 
+- **Huấn luyện tự động:** Cấu hình tự cài số lùi tham số `ReduceLROnPlateau` (giảm learning rate khi mất phương hướng hội tụ) và ngắt sớm `EarlyStopping`.
 
-- `Core/Src/` & `Core/Inc/`: Chứa mã nguồn logic chính của ứng dụng.
-  - **`bl0940_driver.c`**: Driver giao tiếp SPI đọc dòng/áp thô 20-bit mỗi 1 mili-giây.
-  - **`ai_preprocess.c`**: Thu thập dữ liệu dao động xoay chiều, tìm điểm Zero-crossing cắt gốc 0V, nội suy đồ thị và vẽ bản đồ tương quan U-I dưới dạng Histogram ảnh 64x64.
-  - **`jam_ai.c`**: Nạp tấm ảnh vào lõi mạng Neural Network (X-CUBE-AI), chạy phép tính nhận diện khả năng Kẹt (Jam score), xuất ra tỷ lệ % dự đoán.
-  - **`jam_led.c`**: Đọc trạng thái kẹt để đá còi/nháy đèn LED (25Hz) cảnh báo.
-  - **`jam_detect.c`**: Giao diện đóng gói API chính điều phối các luồng chạy.
-  - **`app_threadx.c`**: Phân chia tài nguyên RAM và điều phối độ ưu tiên ngắt cho các luồng hệ điều hành RTOS.
-- `X-CUBE-AI/App/`: Chứa mô hình AI "bê-tông hóa", mảng weights tĩnh và các hàm kích hoạt Activation kích thước giấy nháp 24KB RAM.
-- `USBX/`: Thư viện lõi xử lý USB Device chuẩn ngắt tốc độ Full-Speed hỗ trợ kết nối Data trực tiếp lên PC.
-- `quantization/`: Bộ log mô tả độ nén và giới hạn của mô hình ban đầu khi build xuống Chip.
+### 4. Đánh giá và Lựa chọn
+Quá trình sẽ đánh giá đồng thời toàn bộ các mức cửa sổ `window_size` (3 đến 7) để trích dẫn ra khung chuẩn nhất. Tự động vẽ và trả về:
+- Đồ thị so sánh `ROC AUC` của từng kích thước nhóm chu kỳ khác nhau.
+- Learning curves về *Loss* và *Accuracy* để đối chiếu độ phập phù của dữ liệu trong quá trình luyện mạng.
+- Gợi ý Ngưỡng tối ưu (Optimal Threshold) cực đại bằng tiêu chuẩn Youden's J statistic thông qua đồ thị ROC curve.
 
----
-
-## ⚙️ 3. Quy trình Luồng Data (Data Flow)
-
-1. **Ngắt Timer đo đạc (1kHz):** Mỗi 1ms, TIM1 kích hoạt SPI DMA lấy tín hiệu gốc từ cảm biến BL0940. Cất vào 3 bộ đệm quay vòng Circular Buffers (Triple Buffering).
-2. **Tiền xử lý (Thread Ưu tiên 18):** Lấy Data từ hàng đợi, tách lấy 5 chu kỳ AC 50Hz hoàn chỉnh gần nhất. Cân bằng biên độ và chuyển hóa mảng 5 chu kỳ đó thành 1 ma trận điểm ảnh 64x64 bin.
-3. **Suy luận AI (Thread Ưu tiên 19):** Chạy hàm `ai_network_run()`. Bộ xử lý quét ma trận trong vài mili-giây. Trả về kết quả 0~255 (Tương đương 0% -> 100%).
-   - Nếu *Score ≥ 50%* ➔ Phát tín hiệu `Jam = 1` (Có Kẹt Tải).
-   - Nếu *Score < 50%* ➔ Động cơ `Jam = 0` (Bình Thường).
-4. **Hành động & Phản hồi (Thread Ưu tiên 20 & USB):** Phản hồi đèn LED báo động trên chân GPIO. Đóng gói kết quả gửi qua cổng USB COM về phía máy tính để Script Python (ai_live_deploy) hiển thị theo giời gian thực.
-
----
-
-## 🚀 4. Hướng dẫn Biên dịch & Nạp Code
-1. Mở file project cấu hình `.ioc` `STM32h5_Bl0940.ioc` bằng phần mềm **STM32CubeIDE**.
-2. Click chuột phải vào Project Name trong tab Project Explorer $\rightarrow$ Chọn **Build Project**.
-3. Kết nối board mạch dùng mạch nạp J-Link / ST-Link. Click vào biểu tượng con bọ xanh (Debug) hoặc **Run** để tiến hành flash firmware xuống bộ nhớ ROM Flash (Tại địa chỉ `0x08000000`).
-4. Cắm cáp USB Type-C thứ 2 lên phần cấp nguồn USB của board vi điều khiển nối vào Máy tính. Windows sẽ nhận diện tự động thành thiết bị `USB Serial Device (COMx)`.
-5. Mở Script Python hoặc mở phần mềm Terminal (2000000 baud) để theo dõi dòng log trạng thái của AI!
+### 5. Xây dựng Bản đồ nhiệt giải thích (Explainable AI - Grad-CAM)
+- Chức năng cực kỳ quan trọng được áp dụng ở pha cuối là **Grad-CAM**. Hàm này tô màu (Heatmap Overlay) trực tiếp vào vùng không gian Quỹ đạo 2D nơi mạng CNN ấn định đặc trưng kẹt (JAM), qua đó giúp giải thích lý do tại sao dòng và áp tại những vị trí đó lại xuất hiện sai phạm.
