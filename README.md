@@ -18,11 +18,12 @@ BL0940 (SPI, 1 kHz) ──► Raw Iwave/Uwave
                 CNN 2D int8 (X-CUBE-AI)
                             │
                             ▼
-                JAM / Normal + Confidence
+          Vote 5 mẫu + hysteresis trạng thái
                             │
-              ┌─────────────┴─────────────┐
-              ▼                           ▼
-        LED PB2 (JAM nháy)       USB CDC-ACM (log PC)
+              ┌─────────────┼─────────────┐
+              ▼             ▼             ▼
+        LED PB2        Đèn đỏ/vàng     USB CDC-ACM
+      (JAM nháy)       qua relay       (log AI)
 ```
 
 ## Chức năng chính
@@ -30,9 +31,11 @@ BL0940 (SPI, 1 kHz) ──► Raw Iwave/Uwave
 - Đọc 6 thanh ghi BL0940 qua SPI DMA ở nhịp 1 kHz (Iwave, Uwave, IRMS, VRMS, WATT, PHASE).
 - Chuyển đổi raw → đơn vị vật lý (Volt/Ampere) cho AI.
 - Tiền xử lý tín hiệu (zero-crossing, resampling 50 điểm/chu kỳ, phase-averaging 5 chu kỳ, tạo ảnh I-V 64×64).
-- Suy luận AI bằng CNN 2D int8 (~327 KB weights).
+- Suy luận AI bằng CNN 2D int8 (~243 KB weights, ~42.5 KB activation RAM).
+- Lọc kết quả bằng nhóm 5 lần suy luận và hysteresis để hạn chế báo JAM giả.
 - Báo trạng thái qua LED PB2 (nháy khi JAM, sáng khi đo).
-- Gửi dữ liệu nhị phân + AI status ra USB CDC-ACM để log trên PC.
+- Điều khiển đèn trạng thái đỏ/vàng qua relay tại PC0 và PA0.
+- Gửi AI status dạng khung nhị phân qua USB CDC-ACM để log trên PC.
 
 ## Phần cứng
 
@@ -40,7 +43,8 @@ BL0940 (SPI, 1 kHz) ──► Raw Iwave/Uwave
 - IC đo: BL0940 (SPI, 20-bit signed waveform)
 - Giao tiếp: SPI1 + DMA, USB FS, UART1 debug
 - LED chỉ thị: PB2 (JAM / Measuring)
+- Relay đèn trạng thái: PC0 (đỏ), PA0 (vàng)
 
 ## Nhánh repo
 
-Nhánh `Firmware` chứa toàn bộ project STM32CubeIDE, bao gồm driver, AI preprocess, USBX, ThreadX và model CubeAI.
+Nhánh `Firmware` chứa toàn bộ project STM32CubeIDE, bao gồm driver BL0940, tiền xử lý AI, USBX, ThreadX, model X-CUBE-AI và output build dùng để nạp/debug MCU.

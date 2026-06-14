@@ -68,8 +68,8 @@ all: main-build
 main-build: STM32h5_Bl0940.elf secondary-outputs
 
 # Tool invocations
-STM32h5_Bl0940.elf STM32h5_Bl0940.map: $(OBJS) $(USER_OBJS) D:\Acer\Documents\BL0940_H563_JamLed\BL0940_JamLed\STM32H562RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "STM32h5_Bl0940.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m33 -T"D:\Acer\Documents\BL0940_H563_JamLed\BL0940_JamLed\STM32H562RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="STM32h5_Bl0940.map" -Wl,--gc-sections -static -L../Middlewares/ST/AI/Lib -Wl,--wrap=malloc -Wl,--wrap=free -u _printf_float --specs=nano.specs -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
+STM32h5_Bl0940.elf STM32h5_Bl0940.map: $(OBJS) $(USER_OBJS) D:\Acer\Documents\BL0940_H563_JamLed\BL0940_JamLed_best_int8_no_rammon\STM32H562RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "STM32h5_Bl0940.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m33 -T"D:\Acer\Documents\BL0940_H563_JamLed\BL0940_JamLed_best_int8_no_rammon\STM32H562RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="STM32h5_Bl0940.map" -Wl,--gc-sections -static -L../Middlewares/ST/AI/Lib -Wl,--wrap=malloc -Wl,--wrap=free -u _printf_float --specs=nano.specs -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

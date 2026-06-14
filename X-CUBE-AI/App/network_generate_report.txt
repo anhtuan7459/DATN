@@ -1,256 +1,256 @@
 ST Edge AI Core v2.2.0-20266 2adc00962
-Created date          : 2026-04-16 16:25:14
-Parameters            : generate --target stm32h5 --name network -m D:/Acer/Documents/tflite_cnn2d_jam80/cnn2d_jam80_int8.tflite --compression none --verbosity 1 --workspace C:/Users/Acer/AppData/Local/Temp/mxAI_workspace72602860774003545369263639620288 --output C:/Users/Acer/.stm32cubemx/network_output
+Created date          : 2026-05-19 19:14:54
+Parameters            : generate --target stm32h5 --name network -m C:/Users/Acer/Downloads/optimizemoi_int8.tflite --compression none --verbosity 1 --workspace C:/Users/Acer/AppData/Local/Temp/mxAI_workspace124874850916008120029930934677437 --output C:/Users/Acer/.stm32cubemx/network_output
 
 Exec/report summary (generate)
------------------------------------------------------------------------------------------------------------------------------------
-model file         :   D:\Acer\Documents\tflite_cnn2d_jam80\cnn2d_jam80_int8.tflite                                                
-type               :   tflite                                                                                                      
-c_name             :   network                                                                                                     
-compression        :   none                                                                                                        
-options            :   allocate-inputs, allocate-outputs                                                                           
-optimization       :   balanced                                                                                                    
-target/series      :   stm32h5                                                                                                     
-workspace dir      :   C:\Users\Acer\AppData\Local\Temp\mxAI_workspace72602860774003545369263639620288                             
-output dir         :   C:\Users\Acer\.stm32cubemx\network_output                                                                   
-model_fmt          :   sa/ua per tensor                                                                                            
-model_name         :   cnn2d_jam80_int8                                                                                            
-model_hash         :   0x01478cfeb0231b6e257b5bb8676502d8                                                                          
-params #           :   326,657 items (319.89 KiB)                                                                                  
------------------------------------------------------------------------------------------------------------------------------------
-input 1/1          :   'serving_default_keras_tensor0', uint8(1x64x64x1), 4.00 KBytes, QLinear(0.003921569,0,uint8), activations   
-output 1/1         :   'conversion_15', uint8(1x1), 1 Bytes, QLinear(0.003906250,0,uint8), activations                             
-macc               :   7,490,548                                                                                                   
-weights (ro)       :   327,572 B (319.89 KiB) (1 segment) / -979,056(-74.9%) vs float model                                        
-activations (rw)   :   23,824 B (23.27 KiB) (1 segment) *                                                                          
-ram (total)        :   23,824 B (23.27 KiB) = 23,824 + 0 + 0                                                                       
------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------
+model file         :   C:\Users\Acer\Downloads\optimizemoi_int8.tflite                                                          
+type               :   tflite                                                                                                   
+c_name             :   network                                                                                                  
+compression        :   none                                                                                                     
+options            :   allocate-inputs, allocate-outputs                                                                        
+optimization       :   balanced                                                                                                 
+target/series      :   stm32h5                                                                                                  
+workspace dir      :   C:\Users\Acer\AppData\Local\Temp\mxAI_workspace124874850916008120029930934677437                         
+output dir         :   C:\Users\Acer\.stm32cubemx\network_output                                                                
+model_fmt          :   sa/ua per tensor                                                                                         
+model_name         :   optimizemoi_int8                                                                                         
+model_hash         :   0x4c241159843bfc98b60ccc547fa061da                                                                       
+params #           :   242,337 items (237.60 KiB)                                                                               
+--------------------------------------------------------------------------------------------------------------------------------
+input 1/1          :   'serving_default_V_I_Image0', uint8(1x64x64x1), 4.00 KBytes, QLinear(0.003921569,0,uint8), activations   
+output 1/1         :   'conversion_15', uint8(1x1), 1 Bytes, QLinear(0.003906250,0,uint8), activations                          
+macc               :   27,574,916                                                                                               
+weights (ro)       :   243,300 B (237.60 KiB) (1 segment) / -726,048(-74.9%) vs float model                                     
+activations (rw)   :   42,528 B (41.53 KiB) (1 segment) *                                                                       
+ram (total)        :   42,528 B (41.53 KiB) = 42,528 + 0 + 0                                                                    
+--------------------------------------------------------------------------------------------------------------------------------
 (*) 'input'/'output' buffers are allocated in the activations buffer
 
-Model name - cnn2d_jam80_int8
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-m_id   layer (type,original)                            oshape                 param/size               macc                     connected to   | c_size             c_macc                  c_type              
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-0      serving_default_keras_tensor0 (Input, )          [b:1,h:64,w:64,c:1]                                                                     |                    +8,192(+100.0%)         Conversion_[0]      
-       conversion_0 (Conversion, QUANTIZE)              [b:1,h:64,w:64,c:1]                            8,192    serving_default_keras_tensor0   |                    -8,192(-100.0%)         
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-1      conv2d_1 (Conv2D, CONV_2D)                       [b:1,h:62,w:62,c:16]   160/208               553,552                     conversion_0   | -208(-100.0%)      -553,552(-100.0%)       
-       nl_1_nl (Nonlinearity, CONV_2D)                  [b:1,h:62,w:62,c:16]                          61,504                         conv2d_1   |                    -61,504(-100.0%)        
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-2      pool_2 (Pool, MAX_POOL_2D)                       [b:1,h:31,w:31,c:16]                          61,504                          nl_1_nl   | +208(+100.0%)      +553,552(+900.0%)       Conv2D_[1]          
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-3      conv2d_3 (Conv2D, CONV_2D)                       [b:1,h:29,w:29,c:32]   4,640/4,736         3,875,360                           pool_2   | -4,736(-100.0%)    -3,875,360(-100.0%)     
-       nl_3_nl (Nonlinearity, CONV_2D)                  [b:1,h:29,w:29,c:32]                          26,912                         conv2d_3   |                    -26,912(-100.0%)        
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-4      pool_4 (Pool, MAX_POOL_2D)                       [b:1,h:14,w:14,c:32]                          25,088                          nl_3_nl   | +4,736(+100.0%)    +3,875,360(+15447.1%)   Conv2D_[2]          
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-5      conv2d_5 (Conv2D, CONV_2D)                       [b:1,h:12,w:12,c:64]   18,496/18,688       2,654,272                           pool_4   | -18,688(-100.0%)   -2,654,272(-100.0%)     
-       nl_5_nl (Nonlinearity, CONV_2D)                  [b:1,h:12,w:12,c:64]                           9,216                         conv2d_5   |                    -9,216(-100.0%)         
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-6      pool_6 (Pool, MAX_POOL_2D)                       [b:1,h:6,w:6,c:64]                             9,216                          nl_5_nl   | +18,688(+100.0%)   +2,654,272(+28800.7%)   Conv2D_[3]          
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-10     reshape_10 (Reshape, RESHAPE)                    [b:1,c:2304]                                                                   pool_6   |                                            
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-11     functional_1_dense_1_MatMul (Placeholder, )      [b:128,c:2304]         294,912/294,912                                                  | +512(+0.2%)        +295,040(+100.0%)       Dense_[4]           
-       functional_1_dense.._1_BiasAdd (Placeholder, )   [b:128]                128/512                                                          | -512(-100.0%)                              
-       gemm_11 (Gemm, FULLY_CONNECTED)                  [b:1,c:128]                                  295,040                       reshape_10   |                    -295,040(-100.0%)       
-                                                                                                                  functional_1_dense_1_MatMul   | 
-                                                                                                               functional_1_dense.._1_BiasAdd   | 
-       nl_11_nl (Nonlinearity, FULLY_CONNECTED)         [b:1,c:128]                                      128                          gemm_11   |                    -128(-100.0%)           
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-12     functional_1_dense_1_2_MatMul (Placeholder, )    [b:64,c:128]           8,192/8,192                                                      | +256(+3.1%)        +8,256(+100.0%)         Dense_[5]           
-       functional_1_dense.._2_BiasAdd (Placeholder, )   [b:64]                 64/256                                                           | -256(-100.0%)                              
-       gemm_12 (Gemm, FULLY_CONNECTED)                  [b:1,c:64]                                     8,256                         nl_11_nl   |                    -8,256(-100.0%)         
-                                                                                                                functional_1_dense_1_2_MatMul   | 
-                                                                                                               functional_1_dense.._2_BiasAdd   | 
-       nl_12_nl (Nonlinearity, FULLY_CONNECTED)         [b:1,c:64]                                        64                          gemm_12   |                    -64(-100.0%)            
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-13     functional_1_Output_1_MatMul (Placeholder, )     [b:1,c:64]             64/64                                                            | +4(+6.2%)          +65(+100.0%)            Dense_[6]           
-       functional_1_Output_1_Add (Placeholder, )        [b:1]                  1/4                                                              | -4(-100.0%)                                
-       gemm_13 (Gemm, FULLY_CONNECTED)                  [b:1,c:1]                                         65                         nl_12_nl   |                    -65(-100.0%)            
-                                                                                                                 functional_1_Output_1_MatMul   | 
-                                                                                                                    functional_1_Output_1_Add   | 
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-14     nl_14 (Nonlinearity, LOGISTIC)                   [b:1,c:1]                                         10                          gemm_13   |                    -9(-90.0%)              Nonlinearity_[7]    
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-15     conversion_15 (Conversion, QUANTIZE)             [b:1,c:1]                                          2                            nl_14   |                                            Conversion_[o][8]   
------- ------------------------------------------------ ---------------------- ----------------- ----------- -------------------------------- --- ------------------ ----------------------- ------------------- 
-model/c-model: macc=7,588,381/7,490,548 -97,833(-1.3%) weights=327,572/327,572  activations=--/23,824 io=--/0
+Model name - optimizemoi_int8
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+m_id   layer (type,original)                            oshape                  param/size                macc                     connected to   | c_size             c_macc                   c_type              
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+0      serving_default_V_I_Image0 (Input, )             [b:1,h:64,w:64,c:1]                                                                       |                    +8,192(+100.0%)          Conversion_[0]      
+       conversion_0 (Conversion, QUANTIZE)              [b:1,h:64,w:64,c:1]                              8,192       serving_default_V_I_Image0   |                    -8,192(-100.0%)          
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+1      conv2d_1 (Conv2D, CONV_2D)                       [b:1,h:62,w:62,c:32]    320/416              1,107,104                     conversion_0   | -416(-100.0%)      -1,107,104(-100.0%)      
+       nl_1_nl (Nonlinearity, CONV_2D)                  [b:1,h:62,w:62,c:32]                           123,008                         conv2d_1   |                    -123,008(-100.0%)        
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+2      pool_2 (Pool, MAX_POOL_2D)                       [b:1,h:31,w:31,c:32]                           123,008                          nl_1_nl   | +416(+100.0%)      +1,107,104(+900.0%)      Conv2D_[1]          
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+3      conv2d_3 (Conv2D, CONV_2D)                       [b:1,h:29,w:29,c:64]    18,496/18,688       15,501,376                           pool_2   | -18,688(-100.0%)   -15,501,376(-100.0%)     
+       nl_3_nl (Nonlinearity, CONV_2D)                  [b:1,h:29,w:29,c:64]                            53,824                         conv2d_3   |                    -53,824(-100.0%)         
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+4      pool_4 (Pool, MAX_POOL_2D)                       [b:1,h:14,w:14,c:64]                            50,176                          nl_3_nl   | +18,688(+100.0%)   +15,501,376(+30894.0%)   Conv2D_[2]          
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+5      conv2d_5 (Conv2D, CONV_2D)                       [b:1,h:12,w:12,c:128]   73,856/74,240       10,616,960                           pool_4   | -74,240(-100.0%)   -10,616,960(-100.0%)     
+       nl_5_nl (Nonlinearity, CONV_2D)                  [b:1,h:12,w:12,c:128]                           18,432                         conv2d_5   |                    -18,432(-100.0%)         
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+6      pool_6 (Pool, MAX_POOL_2D)                       [b:1,h:6,w:6,c:128]                             18,432                          nl_5_nl   | +74,240(+100.0%)   +10,616,960(+57600.7%)   Conv2D_[3]          
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+10     reshape_10 (Reshape, RESHAPE)                    [b:1,c:4608]                                                                     pool_6   |                                             
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+11     functional_1_dense_1_MatMul (Placeholder, )      [b:32,c:4608]           147,456/147,456                                                   | +128(+0.1%)        +147,488(+100.0%)        Dense_[4]           
+       functional_1_dense.._1_BiasAdd (Placeholder, )   [b:32]                  32/128                                                            | -128(-100.0%)                               
+       gemm_11 (Gemm, FULLY_CONNECTED)                  [b:1,c:32]                                     147,488                       reshape_10   |                    -147,488(-100.0%)        
+                                                                                                                    functional_1_dense_1_MatMul   | 
+                                                                                                                 functional_1_dense.._1_BiasAdd   | 
+       nl_11_nl (Nonlinearity, FULLY_CONNECTED)         [b:1,c:32]                                          32                          gemm_11   |                    -32(-100.0%)             
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+12     functional_1_dense_1_2_MatMul (Placeholder, )    [b:64,c:32]             2,048/2,048                                                       | +256(+12.5%)       +2,112(+100.0%)          Dense_[5]           
+       functional_1_dense.._2_BiasAdd (Placeholder, )   [b:64]                  64/256                                                            | -256(-100.0%)                               
+       gemm_12 (Gemm, FULLY_CONNECTED)                  [b:1,c:64]                                       2,112                         nl_11_nl   |                    -2,112(-100.0%)          
+                                                                                                                  functional_1_dense_1_2_MatMul   | 
+                                                                                                                 functional_1_dense.._2_BiasAdd   | 
+       nl_12_nl (Nonlinearity, FULLY_CONNECTED)         [b:1,c:64]                                          64                          gemm_12   |                    -64(-100.0%)             
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+13     functional_1_Output_1_MatMul (Placeholder, )     [b:1,c:64]              64/64                                                             | +4(+6.2%)          +65(+100.0%)             Dense_[6]           
+       functional_1_Output_1_Add (Placeholder, )        [b:1]                   1/4                                                               | -4(-100.0%)                                 
+       gemm_13 (Gemm, FULLY_CONNECTED)                  [b:1,c:1]                                           65                         nl_12_nl   |                    -65(-100.0%)             
+                                                                                                                   functional_1_Output_1_MatMul   | 
+                                                                                                                      functional_1_Output_1_Add   | 
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+14     nl_14 (Nonlinearity, LOGISTIC)                   [b:1,c:1]                                           10                          gemm_13   |                    -9(-90.0%)               Nonlinearity_[7]    
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+15     conversion_15 (Conversion, QUANTIZE)             [b:1,c:1]                                            2                            nl_14   |                                             Conversion_[o][8]   
+------ ------------------------------------------------ ----------------------- ----------------- ------------ -------------------------------- --- ------------------ ------------------------ ------------------- 
+model/c-model: macc=27,770,285/27,574,916 -195,369(-0.7%) weights=243,300/243,300  activations=--/42,528 io=--/0
 
 
 
 Generated C-graph summary
 ------------------------------------------------------------------------------------------------------------------------
-model name            : cnn2d_jam80_int8
+model name            : optimizemoi_int8
 c-name                : network
 c-node #              : 9
 c-array #             : 31
-activations size      : 23824 (1 segment)
-weights size          : 327572 (1 segment)
-macc                  : 7490548
-inputs                : ['serving_default_keras_tensor0_output']
+activations size      : 42528 (1 segment)
+weights size          : 243300 (1 segment)
+macc                  : 27574916
+inputs                : ['serving_default_V_I_Image0_output']
 outputs               : ['conversion_15_output']
 
 C-Arrays (31)
------- -------------------------------------- --------------- ------------------------- ----------- --------- 
-c_id   name (*_array)                         item/size       domain/mem-pool           c-type      comment   
------- -------------------------------------- --------------- ------------------------- ----------- --------- 
-0      conv2d_1_bias                          16/64           weights/weights           const s32             
-1      conv2d_1_output                        15376/15376     activations/**default**   s8                    
-2      conv2d_1_scratch0                      548/548         activations/**default**   s8                    
-3      conv2d_1_scratch1                      1984/1984       activations/**default**   s8                    
-4      conv2d_1_weights                       144/144         weights/weights           const s8              
-5      conv2d_3_bias                          32/128          weights/weights           const s32             
-6      conv2d_3_output                        6272/6272       activations/**default**   s8                    
-7      conv2d_3_scratch0                      6144/6144       activations/**default**   s8                    
-8      conv2d_3_scratch1                      1856/1856       activations/**default**   s8                    
-9      conv2d_3_weights                       4608/4608       weights/weights           const s8              
-10     conv2d_5_bias                          64/256          weights/weights           const s32             
-11     conv2d_5_output                        2304/2304       activations/**default**   s8                    
-12     conv2d_5_scratch0                      7168/7168       activations/**default**   s8                    
-13     conv2d_5_scratch1                      1536/1536       activations/**default**   s8                    
-14     conv2d_5_weights                       18432/18432     weights/weights           const s8              
-15     conversion_0_output                    4096/4096       activations/**default**   s8                    
-16     conversion_15_output                   1/1             activations/**default**   u8          /output   
-17     gemm_11_bias                           128/512         weights/weights           const s32             
-18     gemm_11_output                         128/128         activations/**default**   s8                    
-19     gemm_11_scratch0                       2944/5888       activations/**default**   s16                   
-20     gemm_11_weights                        294912/294912   weights/weights           const s8              
-21     gemm_12_bias                           64/256          weights/weights           const s32             
-22     gemm_12_output                         64/64           activations/**default**   s8                    
-23     gemm_12_scratch0                       448/896         activations/**default**   s16                   
-24     gemm_12_weights                        8192/8192       weights/weights           const s8              
-25     gemm_13_bias                           1/4             weights/weights           const s32             
-26     gemm_13_output                         1/1             activations/**default**   s8                    
-27     gemm_13_scratch0                       64/128          activations/**default**   s16                   
-28     gemm_13_weights                        64/64           weights/weights           const s8              
-29     nl_14_output                           1/1             activations/**default**   s8                    
-30     serving_default_keras_tensor0_output   4096/4096       activations/**default**   u8          /input    
------- -------------------------------------- --------------- ------------------------- ----------- --------- 
+------ ----------------------------------- --------------- ------------------------- ----------- --------- 
+c_id   name (*_array)                      item/size       domain/mem-pool           c-type      comment   
+------ ----------------------------------- --------------- ------------------------- ----------- --------- 
+0      conv2d_1_bias                       32/128          weights/weights           const s32             
+1      conv2d_1_output                     30752/30752     activations/**default**   s8                    
+2      conv2d_1_scratch0                   1060/1060       activations/**default**   s8                    
+3      conv2d_1_scratch1                   3968/3968       activations/**default**   s8                    
+4      conv2d_1_weights                    288/288         weights/weights           const s8              
+5      conv2d_3_bias                       64/256          weights/weights           const s32             
+6      conv2d_3_output                     12544/12544     activations/**default**   s8                    
+7      conv2d_3_scratch0                   7168/7168       activations/**default**   s8                    
+8      conv2d_3_scratch1                   3712/3712       activations/**default**   s8                    
+9      conv2d_3_weights                    18432/18432     weights/weights           const s8              
+10     conv2d_5_bias                       128/512         weights/weights           const s32             
+11     conv2d_5_output                     4608/4608       activations/**default**   s8                    
+12     conv2d_5_scratch0                   9216/9216       activations/**default**   s8                    
+13     conv2d_5_scratch1                   3072/3072       activations/**default**   s8                    
+14     conv2d_5_weights                    73728/73728     weights/weights           const s8              
+15     conversion_0_output                 4096/4096       activations/**default**   s8                    
+16     conversion_15_output                1/1             activations/**default**   u8          /output   
+17     gemm_11_bias                        32/128          weights/weights           const s32             
+18     gemm_11_output                      32/32           activations/**default**   s8                    
+19     gemm_11_scratch0                    4768/9536       activations/**default**   s16                   
+20     gemm_11_weights                     147456/147456   weights/weights           const s8              
+21     gemm_12_bias                        64/256          weights/weights           const s32             
+22     gemm_12_output                      64/64           activations/**default**   s8                    
+23     gemm_12_scratch0                    352/704         activations/**default**   s16                   
+24     gemm_12_weights                     2048/2048       weights/weights           const s8              
+25     gemm_13_bias                        1/4             weights/weights           const s32             
+26     gemm_13_output                      1/1             activations/**default**   s8                    
+27     gemm_13_scratch0                    64/128          activations/**default**   s16                   
+28     gemm_13_weights                     64/64           weights/weights           const s8              
+29     nl_14_output                        1/1             activations/**default**   s8                    
+30     serving_default_V_I_Image0_output   4096/4096       activations/**default**   u8          /input    
+------ ----------------------------------- --------------- ------------------------- ----------- --------- 
 
 C-Layers (9)
------- ---------------- ---- --------------- --------- -------- ----------------------------------------- ----------------------- 
-c_id   name (*_layer)   id   layer_type      macc      rom      tensors                                   shape (array id)        
------- ---------------- ---- --------------- --------- -------- ----------------------------------------- ----------------------- 
-0      conversion_0     0    Conversion      8192      0        I: serving_default_keras_tensor0_output   uint8(1x64x64x1) (30)   
-                                                                O: conversion_0_output                    int8(1x64x64x1) (15)    
------- ---------------- ---- --------------- --------- -------- ----------------------------------------- ----------------------- 
-1      conv2d_1         2    Conv2D          615056    208      I: conversion_0_output                    int8(1x64x64x1) (15)    
-                                                                S: conv2d_1_scratch0                                              
-                                                                S: conv2d_1_scratch1                                              
-                                                                W: conv2d_1_weights                       int8(16x3x3x1) (4)      
-                                                                W: conv2d_1_bias                          int32(16) (0)           
-                                                                O: conv2d_1_output                        int8(1x31x31x16) (1)    
------- ---------------- ---- --------------- --------- -------- ----------------------------------------- ----------------------- 
-2      conv2d_3         4    Conv2D          3900448   4736     I: conv2d_1_output                        int8(1x31x31x16) (1)    
-                                                                S: conv2d_3_scratch0                                              
-                                                                S: conv2d_3_scratch1                                              
-                                                                W: conv2d_3_weights                       int8(32x3x3x16) (9)     
-                                                                W: conv2d_3_bias                          int32(32) (5)           
-                                                                O: conv2d_3_output                        int8(1x14x14x32) (6)    
------- ---------------- ---- --------------- --------- -------- ----------------------------------------- ----------------------- 
-3      conv2d_5         6    Conv2D          2663488   18688    I: conv2d_3_output                        int8(1x14x14x32) (6)    
-                                                                S: conv2d_5_scratch0                                              
-                                                                S: conv2d_5_scratch1                                              
-                                                                W: conv2d_5_weights                       int8(64x3x3x32) (14)    
-                                                                W: conv2d_5_bias                          int32(64) (10)          
-                                                                O: conv2d_5_output                        int8(1x6x6x64) (11)     
------- ---------------- ---- --------------- --------- -------- ----------------------------------------- ----------------------- 
-4      gemm_11          11   Dense           295040    295424   I: conv2d_5_output                        int8(1x6x6x64) (11)     
-                                                                S: gemm_11_scratch0                                               
-                                                                W: gemm_11_weights                        int8(128x2304) (20)     
-                                                                W: gemm_11_bias                           int32(128) (17)         
-                                                                O: gemm_11_output                         int8(1x128) (18)        
------- ---------------- ---- --------------- --------- -------- ----------------------------------------- ----------------------- 
-5      gemm_12          12   Dense           8256      8448     I: gemm_11_output                         int8(1x128) (18)        
-                                                                S: gemm_12_scratch0                                               
-                                                                W: gemm_12_weights                        int8(64x128) (24)       
-                                                                W: gemm_12_bias                           int32(64) (21)          
-                                                                O: gemm_12_output                         int8(1x64) (22)         
------- ---------------- ---- --------------- --------- -------- ----------------------------------------- ----------------------- 
-6      gemm_13          13   Dense           65        68       I: gemm_12_output                         int8(1x64) (22)         
-                                                                S: gemm_13_scratch0                                               
-                                                                W: gemm_13_weights                        int8(1x64) (28)         
-                                                                W: gemm_13_bias                           int32(1) (25)           
-                                                                O: gemm_13_output                         int8(1x1) (26)          
------- ---------------- ---- --------------- --------- -------- ----------------------------------------- ----------------------- 
-7      nl_14            14   Nonlinearity    1         0        I: gemm_13_output                         int8(1x1) (26)          
-                                                                O: nl_14_output                           int8(1x1) (29)          
------- ---------------- ---- --------------- --------- -------- ----------------------------------------- ----------------------- 
-8      conversion_15    15   Conversion      2         0        I: nl_14_output                           int8(1x1) (29)          
-                                                                O: conversion_15_output                   uint8(1x1) (16)         
------- ---------------- ---- --------------- --------- -------- ----------------------------------------- ----------------------- 
+------ ---------------- ---- --------------- ---------- -------- -------------------------------------- ----------------------- 
+c_id   name (*_layer)   id   layer_type      macc       rom      tensors                                shape (array id)        
+------ ---------------- ---- --------------- ---------- -------- -------------------------------------- ----------------------- 
+0      conversion_0     0    Conversion      8192       0        I: serving_default_V_I_Image0_output   uint8(1x64x64x1) (30)   
+                                                                 O: conversion_0_output                 int8(1x64x64x1) (15)    
+------ ---------------- ---- --------------- ---------- -------- -------------------------------------- ----------------------- 
+1      conv2d_1         2    Conv2D          1230112    416      I: conversion_0_output                 int8(1x64x64x1) (15)    
+                                                                 S: conv2d_1_scratch0                                           
+                                                                 S: conv2d_1_scratch1                                           
+                                                                 W: conv2d_1_weights                    int8(32x3x3x1) (4)      
+                                                                 W: conv2d_1_bias                       int32(32) (0)           
+                                                                 O: conv2d_1_output                     int8(1x31x31x32) (1)    
+------ ---------------- ---- --------------- ---------- -------- -------------------------------------- ----------------------- 
+2      conv2d_3         4    Conv2D          15551552   18688    I: conv2d_1_output                     int8(1x31x31x32) (1)    
+                                                                 S: conv2d_3_scratch0                                           
+                                                                 S: conv2d_3_scratch1                                           
+                                                                 W: conv2d_3_weights                    int8(64x3x3x32) (9)     
+                                                                 W: conv2d_3_bias                       int32(64) (5)           
+                                                                 O: conv2d_3_output                     int8(1x14x14x64) (6)    
+------ ---------------- ---- --------------- ---------- -------- -------------------------------------- ----------------------- 
+3      conv2d_5         6    Conv2D          10635392   74240    I: conv2d_3_output                     int8(1x14x14x64) (6)    
+                                                                 S: conv2d_5_scratch0                                           
+                                                                 S: conv2d_5_scratch1                                           
+                                                                 W: conv2d_5_weights                    int8(128x3x3x64) (14)   
+                                                                 W: conv2d_5_bias                       int32(128) (10)         
+                                                                 O: conv2d_5_output                     int8(1x6x6x128) (11)    
+------ ---------------- ---- --------------- ---------- -------- -------------------------------------- ----------------------- 
+4      gemm_11          11   Dense           147488     147584   I: conv2d_5_output                     int8(1x6x6x128) (11)    
+                                                                 S: gemm_11_scratch0                                            
+                                                                 W: gemm_11_weights                     int8(32x4608) (20)      
+                                                                 W: gemm_11_bias                        int32(32) (17)          
+                                                                 O: gemm_11_output                      int8(1x32) (18)         
+------ ---------------- ---- --------------- ---------- -------- -------------------------------------- ----------------------- 
+5      gemm_12          12   Dense           2112       2304     I: gemm_11_output                      int8(1x32) (18)         
+                                                                 S: gemm_12_scratch0                                            
+                                                                 W: gemm_12_weights                     int8(64x32) (24)        
+                                                                 W: gemm_12_bias                        int32(64) (21)          
+                                                                 O: gemm_12_output                      int8(1x64) (22)         
+------ ---------------- ---- --------------- ---------- -------- -------------------------------------- ----------------------- 
+6      gemm_13          13   Dense           65         68       I: gemm_12_output                      int8(1x64) (22)         
+                                                                 S: gemm_13_scratch0                                            
+                                                                 W: gemm_13_weights                     int8(1x64) (28)         
+                                                                 W: gemm_13_bias                        int32(1) (25)           
+                                                                 O: gemm_13_output                      int8(1x1) (26)          
+------ ---------------- ---- --------------- ---------- -------- -------------------------------------- ----------------------- 
+7      nl_14            14   Nonlinearity    1          0        I: gemm_13_output                      int8(1x1) (26)          
+                                                                 O: nl_14_output                        int8(1x1) (29)          
+------ ---------------- ---- --------------- ---------- -------- -------------------------------------- ----------------------- 
+8      conversion_15    15   Conversion      2          0        I: nl_14_output                        int8(1x1) (29)          
+                                                                 O: conversion_15_output                uint8(1x1) (16)         
+------ ---------------- ---- --------------- ---------- -------- -------------------------------------- ----------------------- 
 
 
 
 Number of operations per c-layer
-------- ------ ---------------------------- ----------- ------------ 
-c_id    m_id   name (type)                          #op         type 
-------- ------ ---------------------------- ----------- ------------ 
-0       0      conversion_0 (Conversion)          8,192   smul_u8_s8 
-1       2      conv2d_1 (Conv2D)                615,056   smul_s8_s8 
-2       4      conv2d_3 (Conv2D)              3,900,448   smul_s8_s8 
-3       6      conv2d_5 (Conv2D)              2,663,488   smul_s8_s8 
-4       11     gemm_11 (Dense)                  295,040   smul_s8_s8 
-5       12     gemm_12 (Dense)                    8,256   smul_s8_s8 
-6       13     gemm_13 (Dense)                       65   smul_s8_s8 
-7       14     nl_14 (Nonlinearity)                   1     op_s8_s8 
-8       15     conversion_15 (Conversion)             2   smul_s8_u8 
-------- ------ ---------------------------- ----------- ------------ 
-total                                         7,490,548 
+------- ------ ---------------------------- ------------ ------------ 
+c_id    m_id   name (type)                           #op         type 
+------- ------ ---------------------------- ------------ ------------ 
+0       0      conversion_0 (Conversion)           8,192   smul_u8_s8 
+1       2      conv2d_1 (Conv2D)               1,230,112   smul_s8_s8 
+2       4      conv2d_3 (Conv2D)              15,551,552   smul_s8_s8 
+3       6      conv2d_5 (Conv2D)              10,635,392   smul_s8_s8 
+4       11     gemm_11 (Dense)                   147,488   smul_s8_s8 
+5       12     gemm_12 (Dense)                     2,112   smul_s8_s8 
+6       13     gemm_13 (Dense)                        65   smul_s8_s8 
+7       14     nl_14 (Nonlinearity)                    1     op_s8_s8 
+8       15     conversion_15 (Conversion)              2   smul_s8_u8 
+------- ------ ---------------------------- ------------ ------------ 
+total                                         27,574,916 
 
 Number of operation types
----------------- ----------- ----------- 
-operation type             #           % 
----------------- ----------- ----------- 
-smul_u8_s8             8,192        0.1% 
-smul_s8_s8         7,482,353       99.9% 
-op_s8_s8                   1        0.0% 
-smul_s8_u8                 2        0.0% 
+---------------- ------------ ----------- 
+operation type              #           % 
+---------------- ------------ ----------- 
+smul_u8_s8              8,192        0.0% 
+smul_s8_s8         27,566,721      100.0% 
+op_s8_s8                    1        0.0% 
+smul_s8_u8                  2        0.0% 
 
 Complexity report (model)
 ------ ------------------------------- ------------------------- ------------------------- ------ 
 m_id   name                            c_macc                    c_rom                     c_id   
 ------ ------------------------------- ------------------------- ------------------------- ------ 
-0      serving_default_keras_tensor0   |                  0.1%   |                  0.0%   [0]    
-2      pool_2                          |||                8.2%   |                  0.1%   [1]    
-4      pool_4                          ||||||||||||||||  52.1%   |                  1.4%   [2]    
-6      pool_6                          |||||||||||       35.6%   |                  5.7%   [3]    
-11     functional_1_dense_1_MatMul     ||                 3.9%   ||||||||||||||||  90.2%   [4]    
-12     functional_1_dense_1_2_MatMul   |                  0.1%   |                  2.6%   [5]    
+0      serving_default_V_I_Image0      |                  0.0%   |                  0.0%   [0]    
+2      pool_2                          ||                 4.5%   |                  0.2%   [1]    
+4      pool_4                          ||||||||||||||||  56.4%   ||                 7.7%   [2]    
+6      pool_6                          |||||||||||       38.6%   ||||||||          30.5%   [3]    
+11     functional_1_dense_1_MatMul     |                  0.5%   ||||||||||||||||  60.7%   [4]    
+12     functional_1_dense_1_2_MatMul   |                  0.0%   |                  0.9%   [5]    
 13     functional_1_Output_1_MatMul    |                  0.0%   |                  0.0%   [6]    
 14     nl_14                           |                  0.0%   |                  0.0%   [7]    
 15     conversion_15                   |                  0.0%   |                  0.0%   [8]    
 ------ ------------------------------- ------------------------- ------------------------- ------ 
-macc=7,490,548 weights=327,572 act=23,824 ram_io=0
+macc=27,574,916 weights=243,300 act=42,528 ram_io=0
  
  Requested memory size by section - "stm32h5" target
  ------------------------------- -------- --------- ------- -------- 
  module                              text    rodata    data      bss 
  ------------------------------- -------- --------- ------- -------- 
  NetworkRuntime1020_CM33_GCC.a     23,912         0       0        0 
- network.o                            864     2,238   3,704      232 
+ network.o                            860     2,318   3,704      232 
  network_data.o                        48        16      88        0 
  lib (toolchain)*                   1,652         0       0        0 
  ------------------------------- -------- --------- ------- -------- 
- RT total**                        26,476     2,254   3,792      232 
+ RT total**                        26,472     2,334   3,792      232 
  ------------------------------- -------- --------- ------- -------- 
- weights                                0   327,576       0        0 
- activations                            0         0       0   23,824 
+ weights                                0   243,304       0        0 
+ activations                            0         0       0   42,528 
  io                                     0         0       0        0 
  ------------------------------- -------- --------- ------- -------- 
- TOTAL                             26,476   329,830   3,792   24,056 
+ TOTAL                             26,472   245,638   3,792   42,760 
  ------------------------------- -------- --------- ------- -------- 
  *  toolchain objects (libm/libgcc*)
  ** RT AI runtime objects (kernels+infrastructure)
   
   Summary - "stm32h5" target
   --------------------------------------------------
-               FLASH (ro)     %*   RAM (rw)       % 
+               FLASH (ro)      %*   RAM (rw)      % 
   --------------------------------------------------
-  RT total         32,522   9.0%      4,024   14.4% 
+  RT total         32,598   11.8%      4,024   8.6% 
   --------------------------------------------------
-  TOTAL           360,098            27,848         
+  TOTAL           275,902             46,552        
   --------------------------------------------------
   *  rt/total
 

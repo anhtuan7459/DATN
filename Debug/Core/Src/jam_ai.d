@@ -1,6 +1,6 @@
 Core/Src/jam_ai.o: ../Core/Src/jam_ai.c ../Core/Inc/jam_ai.h \
  ../Core/Inc/ai_preprocess.h ../Core/Inc/bl0940_driver.h \
- ../Core/Inc/jam_led.h ../Core/Inc/main.h \
+ ../Core/Inc/jam_led.h ../Core/Inc/jam_traffic.h ../Core/Inc/main.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal.h \
  ../Core/Inc/stm32h5xx_hal_conf.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_rcc.h \
@@ -39,11 +39,15 @@ Core/Src/jam_ai.o: ../Core/Src/jam_ai.c ../Core/Inc/jam_ai.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h \
  ../X-CUBE-AI/App/network.h ../X-CUBE-AI/App/network_config.h \
  ../Middlewares/ST/AI/Inc/ai_platform.h ../X-CUBE-AI/App/network_data.h \
- ../X-CUBE-AI/App/network_data_params.h
+ ../X-CUBE-AI/App/network_data_params.h \
+ ../Middlewares/ST/threadx/common/inc/tx_api.h \
+ ../Middlewares/ST/threadx/ports/cortex_m33/gnu/inc/tx_port.h \
+ ../Core/Inc/tx_user.h
 ../Core/Inc/jam_ai.h:
 ../Core/Inc/ai_preprocess.h:
 ../Core/Inc/bl0940_driver.h:
 ../Core/Inc/jam_led.h:
+../Core/Inc/jam_traffic.h:
 ../Core/Inc/main.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal.h:
 ../Core/Inc/stm32h5xx_hal_conf.h:
@@ -86,3 +90,6 @@ Core/Src/jam_ai.o: ../Core/Src/jam_ai.c ../Core/Inc/jam_ai.h \
 ../Middlewares/ST/AI/Inc/ai_platform.h:
 ../X-CUBE-AI/App/network_data.h:
 ../X-CUBE-AI/App/network_data_params.h:
+../Middlewares/ST/threadx/common/inc/tx_api.h:
+../Middlewares/ST/threadx/ports/cortex_m33/gnu/inc/tx_port.h:
+../Core/Inc/tx_user.h:

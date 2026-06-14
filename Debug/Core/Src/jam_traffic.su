@@ -1,0 +1,2 @@
+../Core/Src/jam_traffic.c:12:6:JamTraffic_Init	8	static
+../Core/Src/jam_traffic.c:18:6:JamTraffic_SetJam	8	static

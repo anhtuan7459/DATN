@@ -1,4 +1,4 @@
-../Core/Src/main.c:646:6:Error_Handler	16	static,ignoring_inline_asm
-../Core/Src/main.c:159:6:SystemClock_Config	144	static
+../Core/Src/main.c:667:6:Error_Handler	16	static,ignoring_inline_asm
+../Core/Src/main.c:160:6:SystemClock_Config	144	static
 ../Core/Src/main.c:89:5:main	112	static
-../Core/Src/main.c:574:6:MX_USB_PCD_Init	8	static
+../Core/Src/main.c:572:6:MX_USB_PCD_Init	8	static

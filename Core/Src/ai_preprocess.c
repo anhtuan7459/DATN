@@ -6,7 +6,9 @@
 
 #define AI_PREPROCESS_PENDING_SAMPLES    256u
 #define AI_PREPROCESS_MAX_CYCLE_SAMPLES  128u
-#define AI_PREPROCESS_MIN_CYCLE_SAMPLES  10u
+#define AI_PREPROCESS_MIN_CYCLE_SAMPLES  20u
+#define AI_PREPROCESS_OPTUNA_MAX_U       (289.33507723782475f)
+#define AI_PREPROCESS_OPTUNA_MAX_I       (4.994944233031699f)
 #define AI_PREPROCESS_HIST_MIN          (-1.1f)
 #define AI_PREPROCESS_HIST_MAX           (1.1f)
 
@@ -37,9 +39,25 @@ static float s_latest_frame[AI_PREPROCESS_IMAGE_SIZE];
 static uint8_t s_frame_ready;
 static uint32_t s_frame_counter;
 
-static float absf_local(float value)
+/* Spline workspace moved to static storage to avoid thread stack overflow. */
+static float s_spline_m[AI_PREPROCESS_MAX_CYCLE_SAMPLES];
+static float s_spline_rhs[AI_PREPROCESS_MAX_CYCLE_SAMPLES];
+static float s_spline_a[AI_PREPROCESS_MAX_CYCLE_SAMPLES];
+static float s_spline_b[AI_PREPROCESS_MAX_CYCLE_SAMPLES];
+static float s_spline_c[AI_PREPROCESS_MAX_CYCLE_SAMPLES];
+static float s_spline_d[AI_PREPROCESS_MAX_CYCLE_SAMPLES];
+static float s_resampled_u[AI_PREPROCESS_NUM_POINTS];
+static float s_resampled_i[AI_PREPROCESS_NUM_POINTS];
+
+static float clip_local(float value, float min_value, float max_value)
 {
-  return (value < 0.0f) ? -value : value;
+  if (value < min_value) {
+    return min_value;
+  }
+  if (value > max_value) {
+    return max_value;
+  }
+  return value;
 }
 
 static void enter_critical(uint32_t *primask)
@@ -55,6 +73,8 @@ static void exit_critical(uint32_t primask)
 
 static void resample_cycle(const float *src, uint16_t src_len, float *dst)
 {
+  uint16_t n;
+  float h;
   uint32_t out_idx;
 
   if (src_len == 0u) {
@@ -69,15 +89,96 @@ static void resample_cycle(const float *src, uint16_t src_len, float *dst)
     return;
   }
 
+  if (src_len < 4u) {
+    /* Fallback linear interpolation for very short cycles. */
+    for (out_idx = 0u; out_idx < AI_PREPROCESS_NUM_POINTS; ++out_idx) {
+      float pos = ((float)out_idx * (float)(src_len - 1u)) /
+                  (float)(AI_PREPROCESS_NUM_POINTS - 1u);
+      uint16_t left = (uint16_t)pos;
+      uint16_t right = left + 1u;
+      float frac = pos - (float)left;
+      float left_val = src[left];
+      float right_val = src[(right < src_len) ? right : left];
+      dst[out_idx] = left_val + ((right_val - left_val) * frac);
+    }
+    return;
+  }
+
+  /*
+   * Not-a-knot cubic spline on uniform grid:
+   * x_i = i / (src_len - 1), i=0..n-1
+   * For uniform h, not-a-knot boundary gives:
+   *   -M0 + 2M1 - M2 = 0
+   *   -M(n-3) + 2M(n-2) - M(n-1) = 0
+   * and interior:
+   *   M(i-1) + 4Mi + M(i+1) = rhs(i), i=1..n-2
+   * where rhs(i) = 6*(y(i+1)-2y(i)+y(i-1))/h^2.
+   */
+  n = src_len;
+  h = 1.0f / (float)(src_len - 1u);
+  memset(s_spline_m, 0, sizeof(s_spline_m));
+  memset(s_spline_rhs, 0, sizeof(s_spline_rhs));
+
+  for (out_idx = 1u; out_idx < (uint32_t)n - 1u; ++out_idx) {
+    s_spline_rhs[out_idx] = 6.0f * (src[out_idx + 1u] - (2.0f * src[out_idx]) + src[out_idx - 1u]) / (h * h);
+  }
+
+  /* From not-a-knot + interior at i=1 and i=n-2. */
+  s_spline_m[1] = s_spline_rhs[1] / 6.0f;
+  s_spline_m[n - 2u] = s_spline_rhs[n - 2u] / 6.0f;
+
+  if (n > 4u) {
+    uint16_t unknown_count = (uint16_t)(n - 4u); /* M2..M(n-3) */
+    uint16_t eq;
+
+    for (eq = 0u; eq < unknown_count; ++eq) {
+      s_spline_a[eq] = (eq == 0u) ? 0.0f : 1.0f;
+      s_spline_b[eq] = 4.0f;
+      s_spline_c[eq] = (eq == (unknown_count - 1u)) ? 0.0f : 1.0f;
+      s_spline_d[eq] = s_spline_rhs[(uint16_t)(eq + 2u)];
+    }
+
+    s_spline_d[0] -= s_spline_m[1];
+    s_spline_d[unknown_count - 1u] -= s_spline_m[n - 2u];
+
+    /* Thomas forward elimination */
+    for (eq = 1u; eq < unknown_count; ++eq) {
+      float w = s_spline_a[eq] / s_spline_b[eq - 1u];
+      s_spline_b[eq] -= w * s_spline_c[eq - 1u];
+      s_spline_d[eq] -= w * s_spline_d[eq - 1u];
+    }
+
+    /* Back substitution */
+    s_spline_m[n - 3u] = s_spline_d[unknown_count - 1u] / s_spline_b[unknown_count - 1u];
+    for (eq = (uint16_t)(unknown_count - 1u); eq > 0u; --eq) {
+      uint16_t idx_m = (uint16_t)(eq + 1u); /* M(eq+1) -> M2.. */
+      s_spline_m[idx_m] = (s_spline_d[eq - 1u] - (s_spline_c[eq - 1u] * s_spline_m[idx_m + 1u])) / s_spline_b[eq - 1u];
+    }
+  }
+
+  s_spline_m[0] = (2.0f * s_spline_m[1]) - s_spline_m[2];
+  s_spline_m[n - 1u] = (2.0f * s_spline_m[n - 2u]) - s_spline_m[n - 3u];
+
   for (out_idx = 0u; out_idx < AI_PREPROCESS_NUM_POINTS; ++out_idx) {
-    float pos = ((float)out_idx * (float)(src_len - 1u)) /
+    float pos = ((float)out_idx * (float)(n - 1u)) /
                 (float)(AI_PREPROCESS_NUM_POINTS - 1u);
-    uint16_t left = (uint16_t)pos;
-    uint16_t right = left + 1u;
-    float frac = pos - (float)left;
-    float left_val = src[left];
-    float right_val = src[(right < src_len) ? right : left];
-    dst[out_idx] = left_val + ((right_val - left_val) * frac);
+    uint16_t i = (uint16_t)pos;
+    float t = pos - (float)i; /* local position in segment [i, i+1] */
+    float a;
+    float b;
+
+    if (i >= n - 1u) {
+      dst[out_idx] = src[n - 1u];
+      continue;
+    }
+
+    a = 1.0f - t;
+    b = t;
+    dst[out_idx] =
+        (a * src[i]) +
+        (b * src[i + 1u]) +
+        (((a * a * a) - a) * s_spline_m[i] * (h * h) / 6.0f) +
+        (((b * b * b) - b) * s_spline_m[i + 1u] * (h * h) / 6.0f);
   }
 }
 
@@ -85,8 +186,6 @@ static void build_latest_frame(void)
 {
   float mean_u[AI_PREPROCESS_NUM_POINTS];
   float mean_i[AI_PREPROCESS_NUM_POINTS];
-  float max_abs_u = 0.0f;
-  float max_abs_i = 0.0f;
   float max_count = 0.0f;
   float bin_width = (AI_PREPROCESS_HIST_MAX - AI_PREPROCESS_HIST_MIN) /
                     (float)AI_PREPROCESS_GRID_SIZE;
@@ -109,29 +208,17 @@ static void build_latest_frame(void)
     mean_u[point_idx] /= (float)AI_PREPROCESS_WINDOW_SIZE;
     mean_i[point_idx] /= (float)AI_PREPROCESS_WINDOW_SIZE;
 
-    if (absf_local(mean_u[point_idx]) > max_abs_u) {
-      max_abs_u = absf_local(mean_u[point_idx]);
-    }
-    if (absf_local(mean_i[point_idx]) > max_abs_i) {
-      max_abs_i = absf_local(mean_i[point_idx]);
-    }
-  }
-
-  if (max_abs_u < 1.0e-9f) {
-    max_abs_u = 1.0f;
-  }
-  if (max_abs_i < 1.0e-9f) {
-    max_abs_i = 1.0f;
   }
 
   for (point_idx = 0u; point_idx < AI_PREPROCESS_NUM_POINTS; ++point_idx) {
-    float u_norm = mean_u[point_idx] / max_abs_u;
-    float i_norm = mean_i[point_idx] / max_abs_i;
-
-    if ((u_norm < AI_PREPROCESS_HIST_MIN) || (u_norm > AI_PREPROCESS_HIST_MAX) ||
-        (i_norm < AI_PREPROCESS_HIST_MIN) || (i_norm > AI_PREPROCESS_HIST_MAX)) {
-      continue;
-    }
+    float u_norm = clip_local(
+        mean_u[point_idx] / (AI_PREPROCESS_OPTUNA_MAX_U + 1.0e-9f),
+        -1.0f,
+        1.0f);
+    float i_norm = clip_local(
+        mean_i[point_idx] / (AI_PREPROCESS_OPTUNA_MAX_I + 1.0e-9f),
+        -1.0f,
+        1.0f);
 
     int32_t u_bin = (int32_t)((u_norm - AI_PREPROCESS_HIST_MIN) / bin_width);
     int32_t i_bin = (int32_t)((i_norm - AI_PREPROCESS_HIST_MIN) / bin_width);
@@ -169,18 +256,15 @@ static void build_latest_frame(void)
 
 static void store_resampled_cycle(void)
 {
-  float resampled_u[AI_PREPROCESS_NUM_POINTS];
-  float resampled_i[AI_PREPROCESS_NUM_POINTS];
-
   if (s_cycle_len < AI_PREPROCESS_MIN_CYCLE_SAMPLES) {
     return;
   }
 
-  resample_cycle(s_cycle_u, s_cycle_len, resampled_u);
-  resample_cycle(s_cycle_i, s_cycle_len, resampled_i);
+  resample_cycle(s_cycle_u, s_cycle_len, s_resampled_u);
+  resample_cycle(s_cycle_i, s_cycle_len, s_resampled_i);
 
-  memcpy(s_window_u[s_window_write_idx], resampled_u, sizeof(resampled_u));
-  memcpy(s_window_i[s_window_write_idx], resampled_i, sizeof(resampled_i));
+  memcpy(s_window_u[s_window_write_idx], s_resampled_u, sizeof(s_resampled_u));
+  memcpy(s_window_i[s_window_write_idx], s_resampled_i, sizeof(s_resampled_i));
 
   s_window_write_idx = (uint8_t)((s_window_write_idx + 1u) % AI_PREPROCESS_WINDOW_SIZE);
   if (s_window_fill < AI_PREPROCESS_WINDOW_SIZE) {

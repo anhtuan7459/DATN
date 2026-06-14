@@ -39,6 +39,8 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/app_threadx.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_pcd_ex.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h \
  ../X-CUBE-AI/App/app_x-cube-ai.h ../Middlewares/ST/AI/Inc/ai_platform.h \
+ ../X-CUBE-AI/App/network.h ../X-CUBE-AI/App/network_config.h \
+ ../X-CUBE-AI/App/network_data.h ../X-CUBE-AI/App/network_data_params.h \
  ../Core/Inc/linked_list.h ../Core/Inc/main.h ../Core/Inc/bl0940_driver.h
 ../Core/Inc/app_threadx.h:
 ../Middlewares/ST/threadx/common/inc/tx_api.h:
@@ -83,6 +85,10 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/app_threadx.h \
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h:
 ../X-CUBE-AI/App/app_x-cube-ai.h:
 ../Middlewares/ST/AI/Inc/ai_platform.h:
+../X-CUBE-AI/App/network.h:
+../X-CUBE-AI/App/network_config.h:
+../X-CUBE-AI/App/network_data.h:
+../X-CUBE-AI/App/network_data_params.h:
 ../Core/Inc/linked_list.h:
 ../Core/Inc/main.h:
 ../Core/Inc/bl0940_driver.h:

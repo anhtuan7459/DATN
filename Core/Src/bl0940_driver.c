@@ -40,7 +40,6 @@ extern SPI_HandleTypeDef hspi1;
 extern UART_HandleTypeDef huart1;
 extern TIM_HandleTypeDef htim1;
 extern UX_SLAVE_CLASS_CDC_ACM *cdc_acm;
-extern TX_SEMAPHORE semaphore;
 
 static uint8_t spi_tx_buffer[6];
 static uint8_t spi_rx_buffer[6];
@@ -65,20 +64,26 @@ static UCHAR usb_binary_buffer[USB_BINARY_BUFFER_SIZE];
 
 float bl0940_convert_current_wave(uint32_t raw_wave)
 {
-    int32_t raw20 = (int32_t)(raw_wave & 0x000FFFFFu);
-    if ((raw20 & 0x00080000u) != 0u) {
-        raw20 |= (int32_t)0xFFF00000u;
+    uint32_t raw20 = raw_wave & 0x000FFFFFu;
+    int32_t raw_signed;
+    if (raw20 & (1u << 19)) {
+        raw_signed = (int32_t)(raw20 | 0xFFF00000u);
+    } else {
+        raw_signed = (int32_t)raw20;
     }
-    return (float)raw20 * 1.218f * 50.4f / ((324004.0f * 3.3f * 1000.0f) / 2000.0f);
+    return (float)raw_signed * 1.218f * 50.4f / ((324004.0f * 3.3f * 1000.0f) / 2000.0f);
 }
 
 float bl0940_convert_voltage_wave(uint32_t raw_wave)
 {
-    int32_t raw20 = (int32_t)(raw_wave & 0x000FFFFFu);
-    if ((raw20 & 0x00080000u) != 0u) {
-        raw20 |= (int32_t)0xFFF00000u;
+    uint32_t raw20 = raw_wave & 0x000FFFFFu;
+    int32_t raw_signed;
+    if (raw20 & (1u << 19)) {
+        raw_signed = (int32_t)(raw20 | 0xFFF00000u);
+    } else {
+        raw_signed = (int32_t)raw20;
     }
-    return (float)raw20 * 1.218f * 100.0f * 49.3f / (79931.0f * 24.0f);
+    return (float)raw_signed * 1.218f * 100.0f * 49.3f / (79931.0f * 24.0f);
 }
 
 static uint8_t calculateChecksum(uint8_t *rxData, uint8_t state, uint8_t address) {
@@ -177,76 +182,31 @@ void SensorBuffer_SendToUSB_Binary(void) {
 
 void SensorBuffer_SendToUSB_Binary_Time(void) {
     ULONG actual_length;
-    static float energy_accum_wh = 0.0f;
+    uint8_t *ptr = (uint8_t *)usb_binary_buffer;
+    const uint32_t payload_len = 20U;
+    uint8_t ai_payload[20];
 
-    for (int i = 0; i < TRIPLE_BUFFER_COUNT; i++) {
-        if (sensor_buffers[i].full) {
-            uint8_t *ptr = (uint8_t *)usb_binary_buffer;
-            const uint32_t payload_len = RECORD_COUNT * 36U;
-
-            // Frame: AA55 + payload + CRC(sum(payload)&0xFF)
-            *ptr++ = USB_FRAME_HEADER_0;
-            *ptr++ = USB_FRAME_HEADER_1;
-            uint8_t *payload_start = ptr;
-
-            for (int j = 0; j < RECORD_COUNT; j++) {
-                SensorRecord *rec = &sensor_buffers[i].records[j];
-
-                float voltage = rec->voltage * 1.218f * 100.0f / (79931.0f * 24.0f);
-                float current = rec->current * 1.218f / ((324004.0f * 3.3f * 1000.0f) / 2000.0f);
-
-                int32_t rawPower = (int32_t)rec->power;
-                if (rawPower < 0) {
-                    rawPower = -rawPower;
-                }
-                float power = (float)rawPower * 1.218f * 1.218f * 100.0f / (4046.0f * (3.3f * 1000.0f / 2000.0f) * 24.0f);
-                float phase   = 2.0f * 3.1415926535f * rec->phase * (50.0f / 1000000.0f);
-                float i_wave  = bl0940_convert_current_wave(rec->current_wave);
-                float u_wave  = bl0940_convert_voltage_wave(rec->voltage_wave);
-                // Approximate cumulative energy in Wh at ~1 kHz sampling.
-                energy_accum_wh += power * (1.0f / 3600.0f) * 0.001f;
-
-                // 7 floats = 28 bytes (voltage,current,power,energy,phase,i_wave,u_wave)
-                memcpy(ptr, &voltage, sizeof(float)); ptr += 4;
-                memcpy(ptr, &current, sizeof(float)); ptr += 4;
-                memcpy(ptr, &power,   sizeof(float)); ptr += 4;
-                memcpy(ptr, &energy_accum_wh, sizeof(float)); ptr += 4;
-                memcpy(ptr, &phase,   sizeof(float)); ptr += 4;
-                memcpy(ptr, &i_wave,  sizeof(float)); ptr += 4;
-                memcpy(ptr, &u_wave,  sizeof(float)); ptr += 4;
-
-                // Ghi timestamp (5 byte)
-                *ptr++ = rec->hour;
-                *ptr++ = rec->minute;
-                *ptr++ = rec->second;
-                memcpy(ptr, &rec->ms, sizeof(uint16_t)); ptr += 2;
-
-                // Pad 3 byte -> mỗi record 36 byte
-                memset(ptr, 0, 3); ptr += 3;
-            }
-
-            /* Append 12-byte AI status block */
-            *ptr++ = g_jam_ai_status.ready;
-            *ptr++ = g_jam_ai_status.last_jam;
-            *ptr++ = g_jam_ai_status.last_output_u8;
-            *ptr++ = (uint8_t)(g_jam_ai_status.run_count & 0xFFu);
-            float ai_score = g_jam_ai_status.last_score;
-            memcpy(ptr, &ai_score, sizeof(float)); ptr += 4;
-            uint32_t ai_us = g_jam_ai_status.last_time_us;
-            memcpy(ptr, &ai_us, sizeof(uint32_t)); ptr += 4;
-
-            const uint32_t total_payload = payload_len + 12U;
-            uint8_t crc = 0;
-            for (uint32_t k = 0; k < total_payload; k++) {
-                crc = (uint8_t)(crc + payload_start[k]);
-            }
-            *ptr++ = crc;
-
-            _ux_device_class_cdc_acm_write(cdc_acm, usb_binary_buffer, (ULONG)(2U + total_payload + 1U), &actual_length);
-
-            sensor_buffers[i].full = 0;
-        }
+    if (JamAi_UsbQueuePop(ai_payload) == 0u) {
+        return;
     }
+
+    /* Frame: AA55 + AI payload only + CRC(sum(payload)&0xFF) — no sensor bulk. */
+    *ptr++ = USB_FRAME_HEADER_0;
+    *ptr++ = USB_FRAME_HEADER_1;
+    uint8_t *payload_start = ptr;
+
+    memcpy(ptr, ai_payload, payload_len);
+    ptr += payload_len;
+
+    const uint32_t total_payload = payload_len;
+    uint8_t crc = 0;
+    for (uint32_t k = 0; k < total_payload; k++) {
+      crc = (uint8_t)(crc + payload_start[k]);
+    }
+    *ptr++ = crc;
+
+    (void)_ux_device_class_cdc_acm_write(
+        cdc_acm, usb_binary_buffer, (ULONG)(2U + total_payload + 1U), &actual_length);
 }
 
 
@@ -343,13 +303,12 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 
             record_index++;
             if (record_index >= RECORD_COUNT) {
-                buf->full = 1;
-                tx_semaphore_put(&semaphore);
+                buf->full = 0;
                 current_buffer_index = (current_buffer_index + 1) % TRIPLE_BUFFER_COUNT;
                 record_index = 0;
 
                 if (sensor_buffers[current_buffer_index].full) {
-                    sensor_buffers[current_buffer_index].full = 0; // Overwrite
+                    sensor_buffers[current_buffer_index].full = 0;
                 }
             }
             break;

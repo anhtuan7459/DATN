@@ -1,0 +1,4 @@
+../Core/Src/jam_buzzer.c:10:6:JamBuzzer_SetMeasuring	1
+../Core/Src/jam_buzzer.c:15:6:JamBuzzer_SetJam	1
+../Core/Src/jam_buzzer.c:20:6:JamBuzzer_StartupBeep	3
+../Core/Src/jam_buzzer.c:34:6:JamBuzzer_Service	2

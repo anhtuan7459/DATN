@@ -39,7 +39,8 @@ Core/Src/app_threadx.o: ../Core/Src/app_threadx.c \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_ll_usb.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_pcd_ex.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h \
- ../Core/Inc/jam_led.h
+ ../Core/Inc/jam_led.h ../Core/Inc/jam_traffic.h \
+ ../AZURE_RTOS/App/app_azure_rtos_config.h
 ../Core/Inc/app_threadx.h:
 ../Middlewares/ST/threadx/common/inc/tx_api.h:
 ../Middlewares/ST/threadx/ports/cortex_m33/gnu/inc/tx_port.h:
@@ -85,3 +86,5 @@ Core/Src/app_threadx.o: ../Core/Src/app_threadx.c \
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_pcd_ex.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h:
 ../Core/Inc/jam_led.h:
+../Core/Inc/jam_traffic.h:
+../AZURE_RTOS/App/app_azure_rtos_config.h:

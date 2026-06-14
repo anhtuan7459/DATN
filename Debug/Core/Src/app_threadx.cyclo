@@ -1,6 +1,7 @@
-../Core/Src/app_threadx.c:163:13:JamLed_thread_entry	1
-../Core/Src/app_threadx.c:142:13:JamAi_thread_entry	2
-../Core/Src/app_threadx.c:133:13:AiPreprocess_thread_entry	1
-../Core/Src/app_threadx.c:79:6:App_ThreadX_Init	3
-../Core/Src/app_threadx.c:112:6:MX_ThreadX_Init	1
-../Core/Src/app_threadx.c:126:6:SPI_thread_entry	1
+../Core/Src/app_threadx.c:184:17:stack_used_bytes	3
+../Core/Src/app_threadx.c:174:13:JamLed_thread_entry	1
+../Core/Src/app_threadx.c:148:13:JamAi_thread_entry	4
+../Core/Src/app_threadx.c:139:13:AiPreprocess_thread_entry	1
+../Core/Src/app_threadx.c:84:6:App_ThreadX_Init	3
+../Core/Src/app_threadx.c:118:6:MX_ThreadX_Init	1
+../Core/Src/app_threadx.c:132:6:SPI_thread_entry	1

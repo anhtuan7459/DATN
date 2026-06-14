@@ -27,7 +27,9 @@
 #include "jam_ai.h"
 #include "main.h"
 #include "jam_led.h"
+#include "jam_traffic.h"
 #include <stdio.h>
+#include "app_azure_rtos_config.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -61,6 +63,7 @@ static UCHAR jam_ai_thread_stack[JAM_AI_THREAD_STACK_SIZE];
 static TX_THREAD jam_ai_thread;
 static UCHAR jam_led_thread_stack[JAM_LED_THREAD_STACK_SIZE];
 static TX_THREAD jam_led_thread;
+static TX_BYTE_POOL *s_tx_app_pool;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -69,6 +72,8 @@ VOID SPI_thread_entry(ULONG initial_input);
 static VOID AiPreprocess_thread_entry(ULONG initial_input);
 static VOID JamAi_thread_entry(ULONG initial_input);
 static VOID JamLed_thread_entry(ULONG initial_input);
+static uint32_t stack_used_bytes(const UCHAR *stack, uint32_t size);
+static void print_runtime_monitor(void);
 /* USER CODE END PFP */
 
 /**
@@ -81,6 +86,7 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
   UINT ret = TX_SUCCESS;
   /* USER CODE BEGIN App_ThreadX_MEM_POOL */
 //  tx_thread_create(&thread_ptr1, "SPI_thread", SPI_thread_entry, 1, thread_stack1, THREAD_STACK_SIZE, 9, 8, TX_NO_TIME_SLICE, TX_AUTO_START);
+  s_tx_app_pool = (TX_BYTE_POOL *)memory_ptr;
   /* USER CODE END App_ThreadX_MEM_POOL */
   /* USER CODE BEGIN App_ThreadX_Init */
   ret = tx_thread_create(&ai_preprocess_thread, "ai_preprocess", AiPreprocess_thread_entry, 0U,
@@ -146,15 +152,20 @@ static VOID JamAi_thread_entry(ULONG initial_input)
   uint32_t last_print_count = 0u;
   for (;;) {
     JamAi_Service();
-    if (g_jam_ai_status.run_count != last_print_count) {
-      last_print_count = g_jam_ai_status.run_count;
-      printf("[AI] #%lu  out=%u  score=%.3f  jam=%u  cycles=%lu  us=%lu\r\n",
-             (unsigned long)g_jam_ai_status.run_count,
+    if (g_jam_ai_status.decision_count != last_print_count) {
+      last_print_count = g_jam_ai_status.decision_count;
+      printf("[AI] #%lu FINAL=%s out=%u score=%.3f votes(J/N)=%u/%u group=%u raw=%lu cycles=%lu us=%lu\r\n",
+             (unsigned long)g_jam_ai_status.decision_count,
+             (g_jam_ai_status.last_jam != 0u) ? "JAM" : "NORMAL",
              g_jam_ai_status.last_output_u8,
              (double)g_jam_ai_status.last_score,
-             g_jam_ai_status.last_jam,
+             g_jam_ai_status.jam_votes,
+             g_jam_ai_status.normal_votes,
+             g_jam_ai_status.decision_group_size,
+             (unsigned long)g_jam_ai_status.run_count,
              (unsigned long)g_jam_ai_status.last_cycles,
              (unsigned long)g_jam_ai_status.last_time_us);
+      print_runtime_monitor();
     }
     tx_thread_sleep(2);
   }
@@ -163,9 +174,79 @@ static VOID JamAi_thread_entry(ULONG initial_input)
 static VOID JamLed_thread_entry(ULONG initial_input)
 {
   TX_PARAMETER_NOT_USED(initial_input);
+  JamTraffic_Init();
   for (;;) {
     JamLed_Service();
     tx_thread_sleep(20);
   }
+}
+
+static uint32_t stack_used_bytes(const UCHAR *stack, uint32_t size)
+{
+  uint32_t i;
+#ifdef TX_STACK_FILL
+  const UCHAR fill = (UCHAR)TX_STACK_FILL;
+#else
+  const UCHAR fill = 0xEFu;
+#endif
+
+  for (i = 0u; i < size; ++i) {
+    if (stack[i] != fill) {
+      break;
+    }
+  }
+  return size - i;
+}
+
+static void print_runtime_monitor(void)
+{
+  ULONG available = 0u;
+  ULONG fragments = 0u;
+  CHAR *name = TX_NULL;
+  ULONG first_susp = 0u;
+  ULONG suspended = 0u;
+  TX_THREAD *next_susp = TX_NULL;
+
+  uint32_t pre_used = stack_used_bytes(ai_preprocess_thread_stack, AI_PREPROCESS_THREAD_STACK_SIZE);
+  uint32_t ai_used = stack_used_bytes(jam_ai_thread_stack, JAM_AI_THREAD_STACK_SIZE);
+  uint32_t led_used = stack_used_bytes(jam_led_thread_stack, JAM_LED_THREAD_STACK_SIZE);
+  uint32_t pre_free = AI_PREPROCESS_THREAD_STACK_SIZE - pre_used;
+  uint32_t ai_free = JAM_AI_THREAD_STACK_SIZE - ai_used;
+  uint32_t led_free = JAM_LED_THREAD_STACK_SIZE - led_used;
+
+  double mmacc_s = 0.0;
+  double mops = 0.0;
+  if (g_jam_ai_status.last_time_us > 0u) {
+    const double sec = (double)g_jam_ai_status.last_time_us / 1000000.0;
+    mmacc_s = ((double)JAM_AI_MODEL_MACC / sec) / 1000000.0;
+    mops = ((double)JAM_AI_MODEL_MACC * 2.0 / sec) / 1000000.0;
+  }
+
+  if (s_tx_app_pool != TX_NULL) {
+    (void)tx_byte_pool_info_get(
+        s_tx_app_pool,
+        &name,
+        &available,
+        &fragments,
+        &first_susp,
+        &suspended,
+        &next_susp);
+  }
+
+  printf("[MON] rtos_pool_free=%lu/%luB fragments=%lu | "
+         "stack_free(pre/ai/led)=%lu/%lu/%luB used=%lu/%lu/%luB | "
+         "perf=%.3f MOPS %.3f MMACC/s\r\n",
+         (unsigned long)available,
+         (unsigned long)TX_APP_MEM_POOL_SIZE,
+         (unsigned long)fragments,
+         (unsigned long)pre_free,
+         (unsigned long)ai_free,
+         (unsigned long)led_free,
+         (unsigned long)pre_used,
+         (unsigned long)ai_used,
+         (unsigned long)led_used,
+         mops,
+         mmacc_s);
+
 }
 /* USER CODE END 1 */

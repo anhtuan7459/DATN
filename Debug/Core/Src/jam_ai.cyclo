@@ -1,8 +1,9 @@
-../Core/Src/jam_ai.c:83:6:JamAi_Init	4
-../Core/Src/jam_ai.c:119:6:JamAi_Service	12
-../Core/Src/jam_ai.c:165:9:JamAi_IsReady	1
-../Core/Src/jam_ai.c:170:7:JamAi_GetLastScore	1
-../Core/Src/jam_ai.c:175:9:JamAi_GetLastOutputU8	1
-../Core/Src/jam_ai.c:180:10:JamAi_GetLastCycles	1
-../Core/Src/jam_ai.c:185:10:JamAi_GetLastTimeUs	1
-../Core/Src/jam_ai.c:190:10:JamAi_GetRunCount	1
+../Core/Src/jam_ai.c:91:9:JamAi_UsbQueuePop	3
+../Core/Src/jam_ai.c:180:6:JamAi_Init	4
+../Core/Src/jam_ai.c:232:6:JamAi_Service	19
+../Core/Src/jam_ai.c:338:9:JamAi_IsReady	1
+../Core/Src/jam_ai.c:343:7:JamAi_GetLastScore	1
+../Core/Src/jam_ai.c:348:9:JamAi_GetLastOutputU8	1
+../Core/Src/jam_ai.c:353:10:JamAi_GetLastCycles	1
+../Core/Src/jam_ai.c:358:10:JamAi_GetLastTimeUs	1
+../Core/Src/jam_ai.c:363:10:JamAi_GetRunCount	1
